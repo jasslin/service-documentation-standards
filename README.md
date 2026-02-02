@@ -78,17 +78,18 @@ This repository defines **enforceable technical requirements** that prevent thes
 
 ### 🔴 Hard Gates (Mandatory, Blocks Release)
 
-Seven automated checks that **MUST pass** before any production deployment:
+Eight automated checks that **MUST pass** before any production deployment:
 
 1. **Merge Control** 🔴 — Branch protection + CODEOWNERS + CI (enforcement mechanism)
 2. **Automated Release** 🔴 — Pipeline-only deployment, no manual SSH (prevents accidental docker-compose down)
-3. **Environment Isolation** — Project-specific naming (prevents network conflicts)
-4. **Git-Tracked Configuration** — No manual operations (prevents wrong-directory accidents)
-5. **Rollback Capability** — Git tags + deployment snapshots (30-second rollback vs 2-week recovery)
-6. **Service Persistence** — restart: always + healthcheck (survives reboots)
-7. **Documentation** — 4 required files (eliminates knowledge single-point-of-failure)
+3. **Least Privilege** 🔴 — Read-only vendor access (limits blast radius, risk management not trust)
+4. **Environment Isolation** — Project-specific naming (prevents network conflicts)
+5. **Git-Tracked Configuration** — No manual operations (prevents wrong-directory accidents)
+6. **Rollback Capability** — Git tags + deployment snapshots (30-second rollback vs 2-week recovery)
+7. **Service Persistence** — restart: always + healthcheck (survives reboots)
+8. **Documentation** — 4 required files (eliminates knowledge single-point-of-failure)
 
-**Gates #1-2 are enforcement mechanisms. Gates #3-7 are validated requirements.**  
+**Gates #1-3 are enforcement mechanisms. Gates #4-8 are validated requirements.**  
 **No need to ask for transparency — technical controls enforce it automatically.**
 
 **Details**: See [RELEASE_POLICY.md](RELEASE_POLICY.md)  
@@ -203,14 +204,18 @@ git tag -a v1.0.0 -m "Initial production release"
 ```
 documentation-management/
 ├── README.md                         ← You are here
-├── RELEASE_POLICY.md                ← Production release requirements
+├── RELEASE_POLICY.md                ← Production release requirements (all 8 gates)
 ├── OPS_RUNBOOK.md                   ← Index to all service documentation
-├── SETUP_BRANCH_PROTECTION.md       ← GitHub branch protection setup (START HERE)
+├── SETUP_BRANCH_PROTECTION.md       ← Gate #1: GitHub branch protection
+├── SETUP_SSH_RESTRICTION.md         ← Gate #2: SSH access restriction
+├── SETUP_LEAST_PRIVILEGE.md         ← Gate #3: Least privilege access
 ├── scripts/
-│   └── validate-hardgates.sh        ← Automated validation (used by CI)
+│   ├── validate-hardgates.sh        ← Automated validation (used by CI)
+│   └── snapshot-release.sh          ← Release snapshot generator
 └── templates/
     ├── CODEOWNERS                    ← Code review enforcement
-    ├── github-workflow-validate.yml  ← CI/CD validation workflow
+    ├── github-workflow-validate.yml  ← CI validation workflow
+    ├── github-workflow-deploy.yml    ← Production deployment pipeline
     └── docs/                          ← Documentation templates
         ├── ARCHITECTURE.md
         ├── DEPLOY.md

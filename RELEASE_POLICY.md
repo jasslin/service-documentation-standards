@@ -353,7 +353,282 @@ test -f scripts/snapshot-release.sh || exit 1
 
 ---
 
-### Gate #3: Environment Isolation (環境隔離)
+### Gate #3: Least Privilege Access (最小權限存取) 🔴 **LIMITS BLAST RADIUS**
+
+**Prevents**: Excessive permissions that amplify incident impact
+
+**The Problem This Solves:**  
+When incidents happen, excessive permissions turn small mistakes into catastrophic failures.  
+當事故發生時，過度權限將小錯誤轉化為災難性失敗。
+
+**Why This Gate Exists:**  
+Not about trust. It's about **risk management** and **limiting blast radius**.  
+不是關於信任。而是關於**風險管理**和**限制爆炸半徑**。
+
+Even trusted engineers/vendors should operate under **least privilege principle**.
+
+#### 3.1 Forbidden Permissions in Production (生產環境禁止的權限)
+
+**The following permissions are FORBIDDEN for vendors/contractors:**
+
+```bash
+# ❌ FORBIDDEN: System administrator access
+sudo access                    # Can destroy entire system
+root access                    # Unrestricted system control
+systemctl restart docker       # Can take down all services
+shutdown / reboot             # System-level disruption
+
+# ❌ FORBIDDEN: Database administrator access
+Database superuser (postgres, root)  # Can drop all databases
+GRANT / REVOKE permissions           # Can escalate privileges
+CREATE / DROP database               # Data loss risk
+ALTER system settings                # Performance impact
+
+# ❌ FORBIDDEN: Direct deployment access
+Direct SSH to production             # Bypasses audit trail (use pipeline only)
+docker-compose down                  # Can take down services (already restricted by Gate #2)
+Manual file editing in /opt/         # Untracked changes
+Direct database schema changes       # Bypasses migration control
+
+# ❌ FORBIDDEN: Secret/credential access
+Access to .env files                 # Contains secrets
+Kubernetes secrets access            # Contains API keys
+Password manager admin               # Can access all credentials
+SSL certificate private keys         # Security compromise
+```
+
+#### 3.2 Allowed Permissions (Read + Observe) (允許的權限)
+
+**Vendors/contractors should have:**
+
+```bash
+# ✅ ALLOWED: Read-only system access
+docker ps                           # View running containers
+docker logs                         # View application logs
+docker-compose ps                   # View service status
+systemctl status                    # View service health (no restart)
+
+# ✅ ALLOWED: Read-only database access
+Database read-only user             # SELECT only, no writes
+pg_stat_activity view              # Query performance monitoring
+EXPLAIN queries                     # Query analysis
+No access to user tables with PII   # Privacy protection
+
+# ✅ ALLOWED: Application logs access
+Application logs via centralized logging (e.g., CloudWatch, ELK)
+Structured log queries              # Troubleshooting
+Metrics dashboards (Grafana, etc.)  # Performance monitoring
+Alert notifications                 # Incident awareness
+
+# ✅ ALLOWED: Deployment monitoring
+GitHub Actions workflow status      # CI/CD pipeline visibility
+Deployment history (git tags)       # Release tracking
+Health check endpoints              # Service availability
+```
+
+#### 3.3 Permission Tiers (權限層級)
+
+**Define three tiers of production access:**
+
+```
+Tier 1: Engineering Team (Internal Staff)
+權限層級 1：工程團隊（內部員工）
+────────────────────────────────────
+✅ Full deployment access (via pipeline)
+✅ Database admin (via bastion host, audited)
+✅ Emergency SSH (logged, requires approval)
+✅ Secret management
+✅ Infrastructure changes
+Blast radius: HIGH (but trusted + accountable)
+
+Tier 2: Vendors/Contractors (External)
+權限層級 2：供應商/承包商（外部）
+────────────────────────────────────
+✅ Read-only database access
+✅ Application logs (no system logs)
+✅ Metrics dashboards
+✅ Deployment status (view only)
+❌ No sudo
+❌ No database writes
+❌ No deployment control
+❌ No secret access
+Blast radius: MINIMAL
+
+Tier 3: Monitoring/Alerting (Automated)
+權限層級 3：監控/告警（自動化）
+────────────────────────────────────
+✅ Read-only metrics
+✅ Health checks
+✅ Log aggregation
+❌ No write access
+❌ No control plane access
+Blast radius: NONE
+```
+
+#### 3.4 Technical Implementation (技術實作)
+
+**How to enforce least privilege:**
+
+**For Database Access:**
+```sql
+-- Create read-only user for vendors
+CREATE USER vendor_readonly WITH PASSWORD 'strong_random_password';
+
+-- Grant read access to specific schemas only
+GRANT CONNECT ON DATABASE production_db TO vendor_readonly;
+GRANT USAGE ON SCHEMA public TO vendor_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO vendor_readonly;
+
+-- Prevent future privilege escalation
+ALTER DEFAULT PRIVILEGES IN SCHEMA public 
+  GRANT SELECT ON TABLES TO vendor_readonly;
+
+-- Revoke dangerous permissions explicitly
+REVOKE CREATE ON SCHEMA public FROM vendor_readonly;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM vendor_readonly;
+
+-- Verify permissions
+\du vendor_readonly
+```
+
+**For SSH Access:**
+```bash
+# Vendors get restricted shell (read-only operations only)
+# Create in /etc/ssh/sshd_config
+
+Match User vendor_user
+    ForceCommand /usr/local/bin/readonly-shell.sh
+    PermitTTY no
+    X11Forwarding no
+    AllowTcpForwarding no
+```
+
+**Readonly shell** (`/usr/local/bin/readonly-shell.sh`):
+```bash
+#!/bin/bash
+# Read-only operations for vendors
+
+case "$SSH_ORIGINAL_COMMAND" in
+  "docker ps"|"docker-compose ps")
+    exec docker ps
+    ;;
+  "docker logs"*)
+    # Allow log viewing only
+    exec docker logs $2
+    ;;
+  "tail -f /var/log/app/"*)
+    # Allow log tailing
+    exec tail -f $3
+    ;;
+  *)
+    echo "❌ Permission denied: Read-only access only"
+    echo "Allowed commands:"
+    echo "  - docker ps"
+    echo "  - docker logs <container>"
+    echo "  - tail -f /var/log/app/<logfile>"
+    exit 1
+    ;;
+esac
+```
+
+**For Secrets Access:**
+```bash
+# Use separate secret management for vendors
+# They get COPY of non-sensitive configs only
+
+# Internal team: Full access via AWS Secrets Manager / Vault
+aws secretsmanager get-secret-value --secret-id prod/db/password
+
+# Vendors: Only documentation about WHICH secrets exist
+cat << EOF
+Required secrets (values managed by Jasslin internal team):
+- DATABASE_URL
+- API_KEY
+- JWT_SECRET
+
+Vendors do NOT have access to actual values.
+EOF
+```
+
+#### 3.5 Risk Management Justification (風險管理理由)
+
+**When communicating this to management/clients:**
+
+> "This is not about trust. This is about **industry-standard risk management.**
+>
+> **Principle of Least Privilege:**
+> - Every user should have ONLY the minimum permissions needed for their job
+> - This is a security best practice, not a trust issue
+>
+> **Why this matters:**
+> - **Limits blast radius**: If credentials are compromised, damage is contained
+> - **Compliance requirement**: Many standards (SOC 2, ISO 27001) require this
+> - **Audit trail**: Read-only access is easier to audit and less risky
+> - **Shared responsibility**: Internal team handles sensitive operations, vendors handle development
+>
+> **What vendors still can do:**
+> - View logs for troubleshooting
+> - Monitor application performance
+> - Verify deployment success
+> - Debug application issues
+>
+> **What vendors cannot do (by design):**
+> - Drop databases (data loss risk)
+> - Take down all services (availability risk)
+> - Access customer data directly (privacy risk)
+> - Bypass deployment pipeline (audit risk)
+>
+> This is how enterprise companies operate. It's not personal; it's professional."
+
+#### 3.6 Automated Checks (自動化檢查)
+
+```bash
+# Check 1: Verify no sudo access for vendors
+getent group sudo | grep -q vendor_user && {
+  echo "❌ Vendor user has sudo access"
+  exit 1
+}
+
+# Check 2: Verify database user is read-only
+psql -U vendor_readonly -c "CREATE TABLE test (id INT);" 2>&1 | grep -q "permission denied" || {
+  echo "❌ Vendor database user has write access"
+  exit 1
+}
+
+# Check 3: Verify SSH restrictions in place
+grep -q "Match User vendor_user" /etc/ssh/sshd_config || {
+  echo "⚠️  SSH restrictions not configured for vendor users"
+}
+```
+
+**What blocks merge:**
+- ❌ Documentation shows vendor has admin access
+- ❌ Database migration grants superuser
+- ❌ SSH config allows unrestricted vendor access
+
+#### 3.7 Permission Review Checklist (權限審查清單)
+
+**Before granting any production access:**
+
+- [ ] User requires **read-only** access first (default)
+- [ ] Specific use case documented (why is access needed?)
+- [ ] Time-limited access (expires after 90 days)
+- [ ] Manager approval obtained
+- [ ] Access logged and auditable
+- [ ] Revocation procedure documented
+
+**For vendor access specifically:**
+
+- [ ] No sudo/root access
+- [ ] Database is read-only
+- [ ] No secret/credential access
+- [ ] SSH restricted or disabled
+- [ ] All actions logged
+- [ ] Contract includes data protection clause
+
+---
+
+### Gate #4: Environment Isolation (環境隔離)
 
 **Prevents**: Network conflicts that break multiple systems
 
@@ -377,7 +652,7 @@ networks:
 
 ---
 
-### Gate #4: Git-Tracked Configuration (配置追蹤)
+### Gate #5: Git-Tracked Configuration (配置追蹤)
 
 **Prevents**: Accidental docker-compose down in wrong directory
 
@@ -396,7 +671,7 @@ PROJECT_NAME=projectname
 
 ---
 
-### Gate #5: Rollback Capability (回滾能力)
+### Gate #6: Rollback Capability (回滾能力)
 
 **Prevents**: 2-week recovery time when things break
 
@@ -422,7 +697,7 @@ docker-compose up -d
 
 ---
 
-### Gate #6: Service Persistence (服務持久性)
+### Gate #7: Service Persistence (服務持久性)
 
 **Prevents**: Manual restart required after server reboot
 
@@ -444,7 +719,7 @@ services:
 
 ---
 
-### Gate #7: Documentation (文件記錄)
+### Gate #8: Documentation (文件記錄)
 
 **Prevents**: Knowledge single-point-of-failure (only one person can fix issues)
 

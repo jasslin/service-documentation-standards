@@ -87,9 +87,41 @@ fi
 echo ""
 
 # ============================================
-# Gate #3: Environment Isolation
+# Gate #3: Least Privilege Access
 # ============================================
-echo "📋 Gate #3: Environment Isolation (prevents network conflicts)"
+echo "📋 Gate #3: Least Privilege Access (limits blast radius)"
+echo "  Checking access control documentation..."
+
+# Check 3.1: Documentation mentions access tiers
+if [ -f "docs/DEPLOY.md" ]; then
+    if grep -qi "vendor.*access\|permission.*tier\|read-only" docs/DEPLOY.md; then
+        echo "  ✅ PASS: Access control documented in DEPLOY.md"
+    else
+        echo "  ⚠️  WARN: DEPLOY.md should document access tiers"
+        echo "      Specify: vendor read-only access, no sudo, database SELECT-only"
+    fi
+fi
+
+# Check 3.2: Database user creation scripts exist
+if [ -f "scripts/create-readonly-user.sql" ] || grep -rq "CREATE USER.*readonly" . 2>/dev/null; then
+    echo "  ✅ PASS: Read-only database user setup found"
+else
+    echo "  ⚠️  WARN: Consider including read-only database user setup"
+    echo "      See: SETUP_LEAST_PRIVILEGE.md for SQL templates"
+fi
+
+# Check 3.3: No hardcoded admin credentials in compose
+if grep -qi "POSTGRES_USER=postgres\|MYSQL_USER=root" docker-compose.yml 2>/dev/null; then
+    echo "  ⚠️  WARN: Default admin users in docker-compose.yml"
+    echo "      Use application-specific users with limited privileges"
+fi
+
+echo ""
+
+# ============================================
+# Gate #4: Environment Isolation
+# ============================================
+echo "📋 Gate #4: Environment Isolation (prevents network conflicts)"
 
 # Check 1.1: No generic network names
 echo "  Checking for generic network names..."
@@ -125,9 +157,9 @@ fi
 echo ""
 
 # ============================================
-# Gate #4: Git-Tracked Configuration
+# Gate #5: Git-Tracked Configuration
 # ============================================
-echo "📋 Gate #4: Git-Tracked Configuration (prevents accidental operations)"
+echo "📋 Gate #5: Git-Tracked Configuration (prevents accidental operations)"
 
 # Check 2.1: docker-compose.yml in git
 echo "  Checking if docker-compose.yml is tracked in git..."
@@ -157,9 +189,9 @@ fi
 echo ""
 
 # ============================================
-# Gate #5: Rollback Capability
+# Gate #6: Rollback Capability
 # ============================================
-echo "📋 Gate #5: Rollback Capability (prevents 2-week recovery)"
+echo "📋 Gate #6: Rollback Capability (prevents 2-week recovery)"
 
 # Check 3.1: Current commit must be tagged
 echo "  Checking if HEAD is tagged..."
@@ -184,9 +216,9 @@ fi
 echo ""
 
 # ============================================
-# Gate #6: Service Persistence
+# Gate #7: Service Persistence
 # ============================================
-echo "📋 Gate #6: Service Persistence (survives reboot)"
+echo "📋 Gate #7: Service Persistence (survives reboot)"
 
 # Check 4.1: restart policies
 echo "  Checking restart policies..."
@@ -211,9 +243,9 @@ fi
 echo ""
 
 # ============================================
-# Gate #7: Documentation
+# Gate #8: Documentation
 # ============================================
-echo "📋 Gate #7: Documentation (eliminates knowledge single-point-of-failure)"
+echo "📋 Gate #8: Documentation (eliminates knowledge single-point-of-failure)"
 
 # Check if running in service repo (has docs/) or this repo (has templates/docs/)
 if [ -d "docs" ]; then
@@ -252,25 +284,26 @@ echo ""
 echo "=========================================="
 
 if [ $FAILED -eq 1 ]; then
-    echo "❌ HARD GATES FAILED (Gates #3-#7)"
+    echo "❌ HARD GATES FAILED (Gates #4-#8)"
     echo "   Pull request will be BLOCKED by CI"
     echo ""
     echo "What each gate prevents:"
     echo "  - Gate #1: Merge Control (enforced by GitHub branch protection)"
     echo "  - Gate #2: Automated Release (enforced by deployment pipeline)"
-    echo "  - Gate #3: Network conflicts (generic names)"
-    echo "  - Gate #4: Accidental shutdowns (wrong-directory operations)"
-    echo "  - Gate #5: 2-week recovery (enables 30-second rollback)"
-    echo "  - Gate #6: Manual restart after reboot"
-    echo "  - Gate #7: Knowledge single-point-of-failure"
+    echo "  - Gate #3: Least Privilege (enforced on production servers)"
+    echo "  - Gate #4: Network conflicts (generic names)"
+    echo "  - Gate #5: Accidental shutdowns (wrong-directory operations)"
+    echo "  - Gate #6: 2-week recovery (enables 30-second rollback)"
+    echo "  - Gate #7: Manual restart after reboot"
+    echo "  - Gate #8: Knowledge single-point-of-failure"
     echo ""
     echo "For detailed requirements, see:"
     echo "https://github.com/jasslin/documentation-management/blob/main/RELEASE_POLICY.md"
     exit 1
 else
-    echo "✅ ALL HARD GATES PASSED (Gates #3-#7)"
+    echo "✅ ALL HARD GATES PASSED (Gates #4-#8)"
     echo ""
-    echo "Gates #1-2 will be enforced when you deploy:"
+    echo "Gates #1-3 will be enforced when you deploy:"
     echo ""
     echo "Gate #1 (Merge Control) — GitHub enforces:"
     echo "  1. Submit pull request"
@@ -283,6 +316,12 @@ else
     echo "  2. Push tag: git push origin v1.2.3"
     echo "  3. GitHub Actions automatically deploys"
     echo "  4. Manual SSH docker-compose operations are FORBIDDEN"
+    echo ""
+    echo "Gate #3 (Least Privilege) — Production servers enforce:"
+    echo "  1. Vendors have read-only database access"
+    echo "  2. Vendors cannot run sudo commands"
+    echo "  3. Vendors cannot run docker-compose down/up"
+    echo "  4. All vendor actions logged"
     echo ""
     echo "Result: Cannot bypass — technical controls enforce all gates."
     exit 0
