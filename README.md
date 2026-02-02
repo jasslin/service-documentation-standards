@@ -1,28 +1,23 @@
 # Production Service Documentation Standards
 # 生產服務文件標準
 
-## Mandatory Framework for All Managed Services
-## 所有託管服務的強制性框架
+## Technical Framework for Service Resilience
+## 服務韌性技術框架
 
 ---
 
-> **⚠️ CRITICAL NOTICE 關鍵聲明**
+> **⚠️ PURPOSE 目的**
 >
-> **This documentation framework is mandatory for ALL managed services.**  
-> **此文件框架對所有託管服務為強制性的。**
+> **This framework provides automated checks and best practices to prevent service outages.**  
+> **此框架提供自動化檢查和最佳實踐以防止服務中斷。**
 >
-> **These standards apply to:**
-> - ✅ Jasslin internal engineering teams  
-> - ✅ Third-party vendors and contractors  
-> - ✅ All production and staging environments  
+> **Two levels of requirements:**
+> - 🔴 **Hard Gates**: Automated checks that block merge/release
+> - 🟡 **Aspirational**: Recommended practices that improve quality
 >
-> **這些標準適用於：**
-> - ✅ Jasslin 內部工程團隊
-> - ✅ 第三方廠商和承包商
-> - ✅ 所有生產和預發環境
->
-> **No one is exempt. Non-compliance will result in deployment rejection and contract review.**  
-> **無人豁免。不合規將導致部署被拒絕及合約審查。**
+> **兩級要求：**
+> - 🔴 **Hard Gates（硬性閘門）**：阻止 merge/release 的自動化檢查
+> - 🟡 **Aspirational（建議標準）**：提升品質的建議實踐
 
 ---
 
@@ -355,290 +350,191 @@ These standards apply **equally** to:
 
 ## Core Standards (核心標準)
 
+This framework defines two levels of requirements:
+
+1. **Hard Gates (硬性閘門)** - Automated checks that block merge/release
+2. **Aspirational Standards (建議標準)** - Best practices that improve quality but don't block deployment
+
+本框架定義兩級要求：
+
+1. **Hard Gates (硬性閘門)** - 阻止 merge/release 的自動化檢查
+2. **Aspirational Standards (建議標準)** - 提升品質但不阻止部署的最佳實踐
+
+---
+
 ### Standard #1: Service Persistence (服務持久性標準)
 
-**Mandate**: All production services MUST survive a hard reboot without manual intervention.  
-**強制要求**：所有生產服務必須在硬重啟後自動恢復，無需人工介入。
+#### 🔴 Hard Gate: Automated Configuration Check
 
-#### Technical Requirements (技術要求)
+**Requirement**: All production services must be configured to survive reboots.  
+**要求**：所有生產服務必須配置為能經得起重啟。
 
-1. **Docker daemon MUST be enabled as a system service:**  
-   **Docker 守護程式必須啟用為系統服務：**
-
-   ```bash
-   sudo systemctl enable docker.service
-   sudo systemctl enable containerd.service
-   
-   # VERIFICATION COMMAND (驗證命令):
-   systemctl is-enabled docker.service
-   # MUST return: enabled ✅
-   # Returning "disabled" is a deployment blocker ❌
-   ```
-
-2. **Every service in `docker-compose.yml` MUST include `restart: always`:**  
-   **`docker-compose.yml` 中的每個服務必須包含 `restart: always`：**
-
-   ```yaml
-   services:
-     api-service:
-       image: your-service:latest
-       restart: always  # ⚠️ MANDATORY - NON-NEGOTIABLE
-       
-     database:
-       image: postgres:16-alpine
-       restart: always  # ⚠️ MANDATORY - NON-NEGOTIABLE
-       
-     cache:
-       image: redis:7-alpine
-       restart: always  # ⚠️ MANDATORY - NON-NEGOTIABLE
-   ```
-
-3. **Health checks MUST be configured for all critical services:**  
-   **必須為所有關鍵服務配置健康檢查：**
-
-   ```yaml
-   healthcheck:
-     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-     interval: 30s
-     timeout: 10s
-     retries: 3
-     start_period: 60s
-   ```
-
-#### Verification Test (驗證測試)
-
-**The Hard Reboot Test** — The ultimate test of system resilience:  
-**硬重啟測試** — 系統韌性的終極測試：
+**Automated Checks (CI/CD Pipeline):**
 
 ```bash
-# On staging server (在預發環境伺服器上):
+# Check 1: Docker compose file has restart policies
+grep -q "restart: always" docker-compose.yml || exit 1
+
+# Check 2: Health checks are defined
+grep -q "healthcheck:" docker-compose.yml || exit 1
+```
+
+**What blocks merge/release:**
+- ❌ Missing `restart: always` in docker-compose.yml
+- ❌ No health check configuration
+
+**自動化檢查（CI/CD 流程）：**
+
+```bash
+# 檢查 1: Docker compose 檔案有重啟策略
+grep -q "restart: always" docker-compose.yml || exit 1
+
+# 檢查 2: 已定義健康檢查
+grep -q "healthcheck:" docker-compose.yml || exit 1
+```
+
+**阻止 merge/release 的條件：**
+- ❌ docker-compose.yml 中缺少 `restart: always`
+- ❌ 無健康檢查配置
+
+**Example Configuration:**
+
+```yaml
+services:
+  api-service:
+    image: your-service:latest
+    restart: always  # 🔴 Hard Gate: Must be present
+    healthcheck:      # 🔴 Hard Gate: Must be present
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+#### 🟡 Aspirational: Hard Reboot Testing
+
+**Recommended Practice**: Test actual reboot recovery in staging.  
+**建議實踐**：在預發環境測試實際重啟恢復。
+
+```bash
+# On staging server:
 sudo reboot now
-
-# After server comes back online (伺服器重新上線後):
-# Wait 3 minutes for services to stabilize
-sleep 180
-
-# ALL containers MUST be running WITHOUT manual intervention
-docker ps
-
-# ALL health checks MUST pass
-curl -f http://localhost:8080/health
+# Verify all containers restart automatically
 ```
 
-**If any manual command is required to restore service, the test FAILS.**  
-**如果需要任何手動命令來恢復服務，則測試失敗。**
-
-#### Consequences of Non-Compliance (違規後果)
-
-- ❌ Deployment is **immediately rejected**  
-- ❌ System must be re-architected before production approval  
-- ❌ Responsible party must complete IronGate certification training  
+**Note**: This is a best practice but not a deployment blocker if you don't have staging environment access.  
+**注意**：這是最佳實踐，但如果您沒有預發環境存取權限，不會阻止部署。  
 
 ---
 
-### Standard #2: Staging Requirement (預發環境要求)
+### Standard #2: Documentation Requirement (文件記錄要求)
 
-**Mandate**: No direct edits to production systems. All changes MUST pass through the **Staging Gate**.  
-**強制要求**：不得直接編輯生產系統。所有變更必須通過**預發環境閘門**。
+#### 🔴 Hard Gate: Documentation File Existence
 
-#### The Staging Gate Process (預發環境閘門流程)
+**Requirement**: Core documentation files must exist in `/docs` folder.  
+**要求**：核心文件檔案必須存在於 `/docs` 資料夾中。
 
-```mermaid
-graph LR
-    A[Code Change] --> B[Local Testing]
-    B --> C[Staging Deployment]
-    C --> D[Hard Reboot Test]
-    D --> E{All Tests Pass?}
-    E -->|Yes| F[Generate TEST_REPORT.md]
-    E -->|No| A
-    F --> G[Sign-off by DevOps & QA]
-    G --> H[Production Deployment]
-    H --> I[Post-Deployment Verification]
-    
-    style D fill:#f9f,stroke:#333,stroke-width:2px
-    style E fill:#ff9,stroke:#333,stroke-width:2px
-    style H fill:#9f9,stroke:#333,stroke-width:2px
+**Automated Checks (CI/CD Pipeline):**
+
+```bash
+# Check: All required documentation files exist
+test -f docs/ARCHITECTURE.md || exit 1
+test -f docs/DEPLOY.md || exit 1
+test -f docs/RESILIENCE.md || exit 1
+test -f docs/TEST_REPORT.md || exit 1
 ```
 
-#### Prohibited Actions (禁止行為)
+**What blocks merge/release:**
+- ❌ Missing any of the 4 core documentation files in `/docs/`
 
-The following actions are **STRICTLY FORBIDDEN** on production systems:  
-以下行為在生產系統上**嚴格禁止**：
+**自動化檢查（CI/CD 流程）：**
 
-- ❌ Direct SSH edits to configuration files  
-  ❌ 直接 SSH 編輯配置檔案
+```bash
+# 檢查：所有必需的文件檔案存在
+test -f docs/ARCHITECTURE.md || exit 1
+test -f docs/DEPLOY.md || exit 1
+test -f docs/RESILIENCE.md || exit 1
+test -f docs/TEST_REPORT.md || exit 1
+```
 
-- ❌ Manual `docker exec` commands to "fix" issues  
-  ❌ 手動 `docker exec` 命令來「修復」問題
+**阻止 merge/release 的條件：**
+- ❌ `/docs/` 中缺少 4 個核心文件檔案中的任何一個
 
-- ❌ Applying "quick fixes" without staging verification  
-  ❌ 應用未經預發環境驗證的「快速修復」
+**Required Files:**
+- `docs/ARCHITECTURE.md` - System blueprint
+- `docs/DEPLOY.md` - Deployment steps
+- `docs/RESILIENCE.md` - Recovery procedures  
+- `docs/TEST_REPORT.md` - Test results template
 
-- ❌ "Just restarting" services to resolve symptoms  
-  ❌ 「只是重啟」服務來解決症狀
+#### 🟡 Aspirational: Documentation Quality Standards
 
-#### Allowed Emergency Procedures (允許的緊急程序)
+**Recommended Practices** (but not deployment blockers):  
+**建議實踐**（但不阻止部署）：
 
-In case of critical production incidents, ONLY the following are permitted:  
-在關鍵生產事故情況下，僅允許以下操作：
+- 📝 Bilingual documentation (English + Chinese)  
+  📝 雙語文件（英文 + 中文）
 
-1. **Rollback to last known good version** (documented in TEST_REPORT.md)  
-   **回滾到最後已知的良好版本**（記錄在 TEST_REPORT.md 中）
+- 📝 Complete environment variable tables  
+  📝 完整的環境變數表
 
-2. **Execute pre-documented recovery SOP** (from RESILIENCE.md)  
-   **執行預先記錄的恢復 SOP**（來自 RESILIENCE.md）
+- 📝 Mermaid diagrams for architecture  
+  📝 架構的 Mermaid 圖表
 
-3. **Invoke monitoring/alerting tools** (read-only access)  
-   **調用監控/告警工具**（僅讀存取）
+- 📝 Detailed rollback procedures  
+  📝 詳細的回滾程序
 
-**Any emergency action MUST be followed by a post-mortem and staging verification of the permanent fix.**  
-**任何緊急行動必須跟隨事後檢討和永久修復的預發環境驗證。**
-
----
-
-### Standard #3: Documentation Requirement (文件記錄要求)
-
-**Mandate**: "If it is not documented, it does not exist." Every deployment MUST include the 4 core documentation files.  
-**強制要求**：「如果沒有文件記錄，它就不存在。」每個部署必須包含 4 個核心文件檔案。
-
-#### The 4 Required Documentation Files (4 個必需的文件檔案)
-
-All projects MUST maintain these files in the `/docs` directory:  
-所有專案必須在 `/docs` 目錄中維護這些檔案：
-
-| File | Purpose | Required Content |
-|------|---------|------------------|
-| **ARCHITECTURE.md** | System blueprint | Service inventory, dependencies, network topology, disaster recovery specs |
-| **DEPLOY.md** | Deployment SOP | Environment setup, step-by-step commands, volume mappings, verification checklist |
-| **RESILIENCE.md** | Self-healing config | Docker enablement, restart policies, recovery SOPs, monitoring setup |
-| **TEST_REPORT.md** | Staging verification | Hard reboot test results, performance benchmarks, rollback procedures, sign-off |
-
-| 檔案 | 目的 | 必需內容 |
-|-----|------|---------|
-| **ARCHITECTURE.md** | 系統藍圖 | 服務清單、依賴關係、網路拓撲、災難恢復規格 |
-| **DEPLOY.md** | 部署 SOP | 環境設定、逐步命令、卷掛載、驗證檢查清單 |
-| **RESILIENCE.md** | 自我恢復配置 | Docker 啟用、重啟策略、恢復 SOP、監控設定 |
-| **TEST_REPORT.md** | 預發環境驗證 | 硬重啟測試結果、效能基準、回滾程序、簽署 |
-
-#### Documentation Quality Standards (文件記錄品質標準)
-
-Documentation will be rejected if it:  
-文件記錄將被拒絕，如果它：
-
-- ❌ Is incomplete or missing sections  
-- ❌ Contains vague instructions like "configure as needed"  
-- ❌ Lacks actual commands (only describes what to do, not how)  
-- ❌ Is not in both English and Chinese  
-- ❌ Has not been tested by a third party following only the written instructions  
-
-#### The Documentation Test (文件記錄測試)
-
-**The incident proved that only one person could recover the system. This is unacceptable.**  
-**事故證明只有一個人能夠恢復系統。這是不可接受的。**
-
-**A junior engineer who has never seen the system must be able to:**  
-**一位從未見過系統的初級工程師必須能夠：**
-
-1. Deploy the entire system from scratch using only DEPLOY.md  
-   僅使用 DEPLOY.md 從零開始部署整個系統
-
-2. Understand the architecture using only ARCHITECTURE.md  
-   僅使用 ARCHITECTURE.md 理解架構
-
-3. Recover from common failures using only RESILIENCE.md  
-   僅使用 RESILIENCE.md 從常見故障中恢復
-
-**If they cannot, the documentation has failed. The system has a single point of failure.**  
-**如果他們不能，則文件記錄已失敗。系統存在單點故障。**
-
----
-
-### Standard #4: Access Control (存取控制標準)
-
-**Mandate**: Administrative (`sudo`) access is a temporary privilege, not a permanent right. It will be revoked upon violation of SOPs.  
-**強制要求**：管理員（`sudo`）存取是臨時權限，而非永久權利。違反 SOP 將導致撤銷。
-
-#### Privilege Tiers (權限層級)
-
-| Access Level | Permitted Actions | Revocation Triggers |
-|--------------|-------------------|---------------------|
-| **Standard Operator** | Docker commands, application logs, health checks | N/A (default level) |
-| **Deployment Engineer** | Git operations, docker-compose, service restarts | Undocumented changes, skipping staging |
-| **System Administrator** | sudo access, system configuration, user management | Any violation of Iron Rules |
-
-| 存取層級 | 允許的操作 | 撤銷觸發條件 |
-|---------|----------|-------------|
-| **標準操作員** | Docker 命令、應用程式日誌、健康檢查 | 不適用（預設層級）|
-| **部署工程師** | Git 操作、docker-compose、服務重啟 | 未記錄的變更、跳過預發環境 |
-| **系統管理員** | sudo 存取、系統配置、使用者管理 | 違反任何鐵律 |
-
-#### Access Revocation Process (存取撤銷流程)
-
-Upon any violation of documentation standards:  
-一旦違反文件標準：
-
-1. **Immediate suspension** of elevated privileges  
-   **立即暫停**提升的權限
-
-2. **Incident report** documenting the violation and impact  
-   **事故報告**記錄違規和影響
-
-3. **Mandatory re-training** on documentation standards  
-   **強制重新培訓**文件標準
-
-4. **Probationary period** with supervised access only  
-   **試用期**僅提供監督存取
-
-5. **Permanent revocation** upon second violation  
-   **永久撤銷**第二次違規時
-
-**For vendors**: Contract review and potential termination.  
-**對於廠商**：合約審查和潛在終止。
+**Note**: The incident showed that knowledge concentration is a critical risk. While we cannot enforce who can understand your documentation, writing clear deployment steps helps avoid single points of failure.  
+**注意**：事故顯示知識集中化是關鍵風險。雖然我們無法強制要求誰能理解您的文件，但編寫清晰的部署步驟有助於避免單點故障。
 
 ---
 
 ## Definition of Done (DoD) (驗收標準)
 
-### The 100% Completion Criteria (100% 完成標準)
+### 🔴 Hard Gates (Blocks Merge/Release)
 
-A task is considered **100% COMPLETE** only when ALL of the following are satisfied:  
-任務僅在滿足以下所有條件時才被視為 **100% 完成**：
+**These checks MUST pass before code can be merged or released:**  
+**這些檢查必須在程式碼合併或發布前通過：**
 
-#### Phase 1: Code Implementation (30%) (階段一：程式碼實作 30%)
+- [ ] `docker-compose.yml` contains `restart: always` for all services
+- [ ] `docker-compose.yml` contains `healthcheck` configuration
+- [ ] `/docs/ARCHITECTURE.md` file exists
+- [ ] `/docs/DEPLOY.md` file exists
+- [ ] `/docs/RESILIENCE.md` file exists
+- [ ] `/docs/TEST_REPORT.md` file exists
 
-- [ ] Feature code is written and functional  
-      功能程式碼已編寫且功能正常
+**Automated check script:**
 
-- [ ] Unit tests pass with >80% coverage  
-      單元測試通過，覆蓋率 >80%
+```bash
+#!/bin/bash
+# Pre-merge validation script
 
-- [ ] Local testing complete  
-      本地測試完成
+echo "Running Hard Gate checks..."
 
-- [ ] Code merged to `develop` branch  
-      程式碼合併到 `develop` 分支
+# Check 1: restart policies
+grep -q "restart: always" docker-compose.yml || { echo "❌ Missing restart: always"; exit 1; }
 
-#### Phase 2: Required Documentation (35%) (階段二：必需文件記錄 35%)
+# Check 2: health checks
+grep -q "healthcheck:" docker-compose.yml || { echo "❌ Missing healthcheck"; exit 1; }
 
-- [ ] `ARCHITECTURE.md` updated with new services/dependencies  
-      `ARCHITECTURE.md` 已更新新服務/依賴關係
+# Check 3-6: documentation files
+test -f docs/ARCHITECTURE.md || { echo "❌ Missing ARCHITECTURE.md"; exit 1; }
+test -f docs/DEPLOY.md || { echo "❌ Missing DEPLOY.md"; exit 1; }
+test -f docs/RESILIENCE.md || { echo "❌ Missing RESILIENCE.md"; exit 1; }
+test -f docs/TEST_REPORT.md || { echo "❌ Missing TEST_REPORT.md"; exit 1; }
 
-- [ ] `DEPLOY.md` includes step-by-step commands for new components  
-      `DEPLOY.md` 包含新組件的逐步命令
+echo "✅ All Hard Gates passed"
+```
 
-- [ ] `RESILIENCE.md` documents self-healing configuration  
-      `RESILIENCE.md` 記錄自我恢復配置
+### 🟡 Aspirational Standards (Recommended but not blockers)
 
-- [ ] `TEST_REPORT.md` template prepared for staging  
-      `TEST_REPORT.md` 範本已為預發環境準備
+**These improve quality but won't block deployment:**  
+**這些提升品質但不會阻止部署：**
 
-#### Phase 3: Staging Verification (35%) (階段三：預發環境驗證 35%)
-
-- [ ] System deployed to staging environment  
-      系統已部署到預發環境
-
-- [ ] **Hard Reboot Test passed** (system survives `sudo reboot now`)  
-      **硬重啟測試通過**（系統經得起 `sudo reboot now`）
+- Unit test coverage >80%
+- Bilingual documentation (English + Chinese)
+- Hard reboot test performed on staging
+- Performance benchmarks documented
+- QA sign-off obtained
 
 - [ ] All health checks operational  
       所有健康檢查運作正常
@@ -680,25 +576,17 @@ A task is considered **100% COMPLETE** only when ALL of the following are satisf
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Rejection Criteria (拒絕標準)
+### Summary: What Blocks Merge/Release (總結：什麼會阻止合併/發布)
 
-**A task will be REJECTED and sent back if:**  
-**任務將被拒絕並退回，如果：**
+**Pull requests will not be merged if Hard Gates fail:**  
+**如果硬性閘門失敗，拉取請求將不會被合併：**
 
-- Any of the 4 documentation files are missing  
-  缺少 4 個文件檔案中的任何一個
+- ❌ Missing `restart: always` in docker-compose.yml
+- ❌ Missing health check configuration
+- ❌ Missing any of the 4 documentation files
 
-- Hard Reboot Test was not performed or failed  
-  未執行或未通過硬重啟測試
-
-- Docker service not enabled (`systemctl is-enabled docker` returns "disabled")  
-  Docker 服務未啟用（`systemctl is-enabled docker` 返回 "disabled"）
-
-- Any service lacks `restart: always` in `docker-compose.yml`  
-  任何服務在 `docker-compose.yml` 中缺少 `restart: always`
-
-- TEST_REPORT.md is not signed off by required stakeholders  
-  TEST_REPORT.md 未經必需利益相關者簽署
+**Everything else is recommended but won't block deployment.**  
+**其他所有內容都是建議但不會阻止部署。**
 
 ---
 
@@ -893,94 +781,30 @@ Before ANY production deployment, the following checklist MUST be completed and 
 **If ANY checkbox is unchecked, deployment is REJECTED.**  
 **如果任何複選框未勾選，部署將被拒絕。**
 
-### Violation Consequences (違規後果)
+### What Happens When Hard Gates Fail (硬性閘門失敗時會發生什麼)
 
-#### First Violation (首次違規)
+**Immediate Action:**
+- Pull request cannot be merged
+- Code review will request changes
+- CI/CD pipeline will fail
 
-- ❌ Deployment immediately rejected and rolled back  
-  ❌ 部署立即被拒絕並回滾
+**立即行動：**
+- 拉取請求無法合併
+- 程式碼審查將請求變更
+- CI/CD 流程將失敗
 
-- 📋 Incident report required within 24 hours  
-  📋 需要在 24 小時內提交事故報告
+**To Proceed:**
+1. Fix the issues identified by automated checks
+2. Push updated code
+3. Re-run checks
 
-- 📚 Mandatory documentation standards training (4 hours)  
-  📚 強制性文件標準培訓（4 小時）
+**繼續進行：**
+1. 修復自動化檢查識別的問題
+2. 推送更新的程式碼
+3. 重新運行檢查
 
-- ⚠️ Formal warning issued to responsible party  
-  ⚠️ 向相關責任方發出正式警告
-
-#### Second Violation (第二次違規)
-
-- ❌ Suspension of deployment privileges for 30 days  
-  ❌ 暫停部署權限 30 天
-
-- 📋 Comprehensive post-mortem required  
-  📋 需要全面的事後檢討
-
-- 👨‍💼 Meeting with Engineering Lead and Project Manager  
-  👨‍💼 與工程主管和專案經理會面
-
-- ⚠️ Performance review impact  
-  ⚠️ 影響績效評估
-
-#### Third Violation (第三次違規)
-
-**For Internal Staff:**  
-**對於內部員工：**
-- ❌ Permanent removal from production deployment responsibilities  
-  ❌ 永久移除生產部署職責
-
-- 📋 HR disciplinary action  
-  📋 人力資源紀律處分
-
-**For External Vendors:**  
-**對於外部廠商：**
-- ❌ Contract review and potential termination  
-  ❌ 合約審查和潛在終止
-
-- 💰 Financial penalties as per contract terms  
-  💰 根據合約條款的財務罰款
-
-- 🚫 Blacklist from future Jasslin projects  
-  🚫 列入未來 Jasslin 專案的黑名單
-
-### Incident Response Protocol (事故響應協議)
-
-If a production incident occurs due to documentation standard non-compliance:  
-如果因不符合文件標準而發生生產事故：
-
-**Within 1 Hour (1 小時內):**
-1. Activate emergency rollback using documented procedure from TEST_REPORT.md  
-   使用 TEST_REPORT.md 中記錄的程序啟動緊急回滾
-
-2. Notify all stakeholders (client, management, engineering leads)  
-   通知所有利益相關者（客戶、管理層、工程主管）
-
-3. Initiate incident log with timeline  
-   啟動包含時間軸的事故日誌
-
-**Within 24 Hours (24 小時內):**
-4. Submit preliminary incident report  
-   提交初步事故報告
-
-5. Identify root cause and responsible parties  
-   確定根本原因和相關責任方
-
-6. Implement immediate preventive measures  
-   實施立即的預防措施
-
-**Within 72 Hours (72 小時內):**
-7. Complete comprehensive post-mortem analysis  
-   完成全面的事後檢討分析
-
-8. Update RESILIENCE.md with new failure scenario and recovery procedure  
-   使用新的故障情境和恢復程序更新 RESILIENCE.md
-
-9. Enforce consequences on responsible parties  
-   對相關責任方執行後果
-
-10. Client communication and apology  
-    客戶溝通和道歉
+**Note**: Other organizational consequences (training, performance reviews, contract terms) are outside the scope of this technical framework and determined by management.  
+**注意**：其他組織後果（培訓、績效評估、合約條款）不在此技術框架範圍內，由管理層決定。
 
 ---
 
