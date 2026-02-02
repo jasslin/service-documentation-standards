@@ -1,0 +1,186 @@
+#!/bin/bash
+# Hard Gates Validation Script
+# Lessons from the 2-week Flemabus outage incident
+# 
+# Purpose: Automated checks that prevent:
+# - Network naming conflicts
+# - Accidental docker-compose down in wrong directory  
+# - Inability to rollback
+# - Service persistence failures
+# - Knowledge concentration (single point of failure)
+
+set -e
+
+echo "=========================================="
+echo "Hard Gates Validation"
+echo "From: Jasslin Production Service Standards"
+echo "=========================================="
+echo ""
+
+FAILED=0
+
+# ============================================
+# Standard #1: Environment Isolation
+# ============================================
+echo "📋 Standard #1: Environment Isolation (prevents network conflicts)"
+
+# Check 1.1: No generic network names
+echo "  Checking for generic network names..."
+if grep -qE "^\s*(app-network|default|web|backend|frontend|db-network):" docker-compose.yml 2>/dev/null; then
+    echo "  ❌ FAIL: Generic network name found"
+    echo "     Generic names cause conflicts between deployments"
+    echo "     Use: \${PROJECT_NAME}-network instead"
+    FAILED=1
+else
+    echo "  ✅ PASS: No generic network names"
+fi
+
+# Check 1.2: Container names must exist
+echo "  Checking container names..."
+if ! grep -q "container_name:" docker-compose.yml 2>/dev/null; then
+    echo "  ❌ FAIL: No container_name definitions"
+    echo "     Without names, can't identify which containers belong to which project"
+    FAILED=1
+else
+    echo "  ✅ PASS: Container names defined"
+fi
+
+# Check 1.3: Custom networks defined
+echo "  Checking custom network definitions..."
+if ! grep -q "^networks:" docker-compose.yml 2>/dev/null; then
+    echo "  ❌ FAIL: No custom networks defined"
+    echo "     Using default network risks conflicts"
+    FAILED=1
+else
+    echo "  ✅ PASS: Custom networks defined"
+fi
+
+echo ""
+
+# ============================================
+# Standard #2: No Manual Destructive Operations
+# ============================================
+echo "📋 Standard #2: Git Tracking (prevents accidental wrong-directory operations)"
+
+# Check 2.1: docker-compose.yml in git
+echo "  Checking if docker-compose.yml is tracked in git..."
+if ! git ls-files docker-compose.yml 2>/dev/null | grep -q docker-compose.yml; then
+    echo "  ❌ FAIL: docker-compose.yml not tracked in git"
+    echo "     Without git tracking, can't verify which directory you're in"
+    FAILED=1
+else
+    echo "  ✅ PASS: docker-compose.yml tracked in git"
+fi
+
+# Check 2.2: PROJECT_NAME in .env
+echo "  Checking PROJECT_NAME in .env..."
+if [ -f .env ]; then
+    if ! grep -q "^PROJECT_NAME=" .env; then
+        echo "  ❌ FAIL: Missing PROJECT_NAME in .env"
+        echo "     PROJECT_NAME helps identify which deployment you're working on"
+        FAILED=1
+    else
+        PROJECT=$(grep "^PROJECT_NAME=" .env | cut -d= -f2)
+        echo "  ✅ PASS: PROJECT_NAME=$PROJECT"
+    fi
+else
+    echo "  ⚠️  WARN: .env file not found (may not be committed)"
+fi
+
+echo ""
+
+# ============================================
+# Standard #3: Rollback Capability
+# ============================================
+echo "📋 Standard #3: Version Tagging (prevents 2-week recovery)"
+
+# Check 3.1: Current commit must be tagged
+echo "  Checking if HEAD is tagged..."
+if ! git describe --exact-match HEAD 2>/dev/null; then
+    echo "  ❌ FAIL: HEAD commit not tagged"
+    echo "     Without tags, can't rollback to previous working version"
+    echo "     Fix: git tag -a v1.0.0 -m 'Release' && git push origin v1.0.0"
+    FAILED=1
+else
+    TAG=$(git describe --exact-match HEAD 2>/dev/null)
+    echo "  ✅ PASS: Tagged as $TAG"
+    
+    # Check 3.2: Tag must follow version format
+    if ! echo "$TAG" | grep -Eq "^v[0-9]+\.[0-9]+\.[0-9]+$"; then
+        echo "  ❌ FAIL: Tag format incorrect (must be v1.0.0)"
+        FAILED=1
+    else
+        echo "  ✅ PASS: Tag format correct"
+    fi
+fi
+
+echo ""
+
+# ============================================
+# Standard #4: Service Persistence
+# ============================================
+echo "📋 Standard #4: Service Persistence (survives reboot)"
+
+# Check 4.1: restart policies
+echo "  Checking restart policies..."
+if ! grep -q "restart: always" docker-compose.yml 2>/dev/null; then
+    echo "  ❌ FAIL: No 'restart: always' found"
+    echo "     Services won't restart after reboot"
+    FAILED=1
+else
+    echo "  ✅ PASS: restart: always configured"
+fi
+
+# Check 4.2: Health checks
+echo "  Checking health checks..."
+if ! grep -q "healthcheck:" docker-compose.yml 2>/dev/null; then
+    echo "  ❌ FAIL: No healthcheck configured"
+    echo "     Can't verify service is actually working after restart"
+    FAILED=1
+else
+    echo "  ✅ PASS: healthcheck configured"
+fi
+
+echo ""
+
+# ============================================
+# Standard #5: Documentation
+# ============================================
+echo "📋 Standard #5: Documentation (eliminates knowledge single-point-of-failure)"
+
+DOCS=(
+    "docs/ARCHITECTURE.md"
+    "docs/DEPLOY.md"
+    "docs/RESILIENCE.md"
+    "docs/TEST_REPORT.md"
+)
+
+for doc in "${DOCS[@]}"; do
+    echo "  Checking $doc..."
+    if [ ! -f "$doc" ]; then
+        echo "  ❌ FAIL: $doc not found"
+        FAILED=1
+    else
+        echo "  ✅ PASS: $doc exists"
+    fi
+done
+
+echo ""
+echo "=========================================="
+
+if [ $FAILED -eq 1 ]; then
+    echo "❌ HARD GATES FAILED"
+    echo "   Pull request will be BLOCKED"
+    echo ""
+    echo "These checks prevent:"
+    echo "  - Network conflicts (Standard #1)"
+    echo "  - Accidental shutdowns (Standard #2)"
+    echo "  - 2-week recovery time (Standard #3)"
+    echo "  - Manual restart after reboot (Standard #4)"
+    echo "  - Knowledge single-point-of-failure (Standard #5)"
+    exit 1
+else
+    echo "✅ ALL HARD GATES PASSED"
+    echo "   Pull request can be merged"
+    exit 0
+fi

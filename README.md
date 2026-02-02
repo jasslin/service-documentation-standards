@@ -92,62 +92,77 @@ This exposed a **critical single point of failure**: **Critical system knowledge
 
 ### Root Cause Analysis (根本原因分析)
 
-The Post-Mortem investigation revealed **two critical failures** that should not exist in a production environment:  
-事後檢討調查揭露了**兩個關鍵失誤**，這些失誤在生產環境中不應該存在：
+The Post-Mortem investigation revealed **multiple critical failures**:  
+事後檢討調查揭露了**多個關鍵失誤**：
 
-#### Failure #1: Service Persistence Failure (服務持久性失敗)
+#### Failure #1: Lack of Environment Isolation (缺乏環境隔離)
 
-**Finding**: The Docker daemon was not configured as a system-level service to auto-start on boot.  
-**發現**：Docker 守護程式未配置為系統級服務以在開機時自動啟動。
+**Finding**: New deployment attempted to use the same Docker network name as the existing production system, causing network conflicts that broke both systems.  
+**發現**：新部署嘗試使用與現有生產系統相同的 Docker network 名稱，導致網路衝突使兩個系統都損壞。
+
+```bash
+# Both deployments tried to create:
+docker network create app-network
+# Error: network with name app-network already exists
+
+# Result: New deployment failed AND existing system network corrupted
+# 結果：新部署失敗且現有系統網路損壞
+```
+
+**What this means**: Without proper naming conventions and environment isolation, deployments can interfere with each other.  
+**這意味著什麼**：沒有適當的命名規範和環境隔離，部署會相互干擾。
+
+**Professional Standard**: Each deployment must use uniquely named resources (networks, volumes, container names).  
+**專業標準**：每個部署必須使用唯一命名的資源（網路、卷、容器名稱）。
+
+#### Failure #2: Manual `docker-compose down` Without Understanding Impact (手動執行 docker-compose down 而不理解影響)
+
+**Finding**: Engineer manually executed `docker-compose down` in the wrong directory, bringing down the production system instead of the test deployment.  
+**發現**：工程師在錯誤的目錄中手動執行 `docker-compose down`，導致生產系統而非測試部署停止。
+
+```bash
+# Engineer thought they were in test directory
+cd /opt/test-deployment  # Actually still in /opt/production
+docker-compose down      # ❌ Brought down PRODUCTION
+
+# Without network names in compose files, couldn't easily identify which was which
+# 沒有在 compose 檔案中使用網路名稱，無法輕易識別哪個是哪個
+```
+
+**What this means**: Manual operations without clear naming and safeguards lead to catastrophic mistakes.  
+**這意味著什麼**：沒有明確命名和安全措施的手動操作導致災難性錯誤。
+
+**Professional Standard**: Production systems must have clear identifiers and require explicit confirmation before destructive operations.  
+**專業標準**：生產系統必須有清晰的識別符，在破壞性操作前需要明確確認。
+
+#### Failure #3: No Rollback Plan or Backup Configuration (無回滾計劃或備份配置)
+
+**Finding**: When the production system went down, there was no documented way to restore it.  
+**發現**：當生產系統停止時，沒有記錄的恢復方法。
+
+- No backup of docker-compose.yml
+- No backup of .env file
+- No documentation of network configuration
+- No record of which containers were running
+
+**What this means**: System recovery took TWO WEEKS because everything had to be reconstructed from memory.  
+**這意味著什麼**：系統恢復花了兩週時間，因為一切都必須從記憶中重建。
+
+#### Failure #4: Service Persistence Not Configured (服務持久性未配置)
+
+**Finding**: Even after reconstructing the configuration, services didn't survive a simple reboot because:  
+**發現**：即使重建配置後，服務也無法經得起簡單的重啟，因為：
+
+- Docker daemon not enabled for auto-start
+- No `restart: always` in container configuration
 
 ```bash
 systemctl is-enabled docker.service
-# Expected: enabled ✅
 # Actual: disabled ❌
 ```
 
-**What this means**: After any reboot (routine, crash, power failure), the Docker daemon would remain offline until manually started.  
-**這意味著什麼**：在任何重啟（例行性、崩潰、電源故障）後，Docker 守護程式將保持離線狀態，直到手動啟動。
-
-**Professional Standard**: System-critical services MUST be enabled for automatic startup. This is a fundamental industry standard for system administrators.  
-**專業標準**：系統關鍵服務必須啟用自動啟動。這是系統管理員的基本業界標準。
-
-**How this was missed**: The deployment vendor either:  
-**如何遺漏**：部署廠商要麼：
-- Was not aware this was required  
-  未察覺此為必需
-- Knew but deliberately skipped it (negligence)  
-  知道但故意跳過（疏忽）
-- Assumed "someone else" would do it (systemic failure)  
-  假設「其他人」會做（系統性失敗）
-
-#### Failure #2: Self-Healing Failure (自我恢復失敗)
-
-**Finding**: The `docker-compose.yml` configuration lacked `restart: always` policies on all services.  
-**發現**：`docker-compose.yml` 配置在所有服務上缺少 `restart: always` 策略。
-
-```yaml
-# What was deployed (部署的內容):
-services:
-  api-service:
-    image: flemabus-api:latest
-    # restart: always ❌ MISSING
-
-# What should have been deployed (應該部署的內容):
-services:
-  api-service:
-    image: flemabus-api:latest
-    restart: always  # ✅ MANDATORY
-```
-
-**What this means**: Even if Docker had been running after the reboot, containers would NOT have restarted automatically. Manual intervention would still have been required.  
-**這意味著什麼**：即使 Docker 在重啟後運行，容器也不會自動重啟。仍然需要人工介入。
-
-**Professional Standard**: All production services must be self-healing. **Systems must survive failures without human intervention.**  
-**專業標準**：所有生產服務必須具備自我恢復能力。**系統必須在無人為介入的情況下經得起故障。**
-
-**How this was missed**: The deployment relied on "manual memory" — the expectation that someone would remember to run `docker-compose up` after every reboot. This is **unacceptable** in professional engineering.  
-**如何遺漏**：部署依賴於「手動記憶」— 期望有人會記得在每次重啟後運行 `docker-compose up`。這在專業工程中是**不可接受的**。
+**What this means**: Any reboot requires manual intervention.  
+**這意味著什麼**：任何重啟都需要人工介入。
 
 ---
 
@@ -239,19 +254,26 @@ The vendor said "it's deployed" and we accepted it **without verification**.
 **This incident was 100% preventable.**  
 **此事故是 100% 可預防的。**
 
-It was not caused by:  
-它不是由以下原因造成的：
-- ❌ Complex technical challenges  
-- ❌ Unforeseen edge cases  
-- ❌ Infrastructure limitations  
+**The actual failures that caused 2-week downtime:**  
+**導致兩週停機的實際失誤：**
 
-It was caused by:  
-它是由以下原因造成的：
-- ✅ Failure to follow basic professional standards  
-- ✅ Reliance on "manual memory" instead of automation  
-- ✅ **Lack of documentation and verification**  
-- ✅ **Knowledge concentrated in a single person** (critical single point of failure)
-- ✅ Absence of accountability and enforcement  
+1. **Network naming conflicts** — Generic names (app-network) caused new deployment to conflict with production, breaking both systems  
+   **網路命名衝突** — 通用名稱（app-network）導致新部署與生產衝突，兩個系統都損壞
+
+2. **Accidental `docker-compose down`** — Engineer ran command in wrong directory, brought down production  
+   **意外執行 `docker-compose down`** — 工程師在錯誤的目錄中運行命令，導致生產停止
+
+3. **No rollback capability** — No git tags, no way to restore previous working configuration  
+   **無回滾能力** — 無 git 標記，無法恢復之前的工作配置
+
+4. **Knowledge in one person's memory** — Only one engineer could diagnose and fix the issues  
+   **知識只在一個人記憶中** — 只有一位工程師能診斷和修復問題
+
+5. **No documentation** — Recovery required reverse-engineering everything from scratch  
+   **無文件記錄** — 恢復需要從頭逆向工程所有內容
+
+**Note**: Yes, Docker not enabled and missing restart: always were also issues, but the above failures are what actually extended recovery to TWO WEEKS.  
+**注意**：是的，Docker 未啟用和缺少 restart: always 也是問題，但上述失誤才是真正將恢復延長到兩週的原因。  
 
 **Professional engineering is not optional.**  
 **專業工程不是可選的。**
@@ -362,7 +384,176 @@ This framework defines two levels of requirements:
 
 ---
 
-### Standard #1: Service Persistence (服務持久性標準)
+### Standard #1: Environment Isolation and Naming (環境隔離與命名規範)
+
+#### 🔴 Hard Gate: Unique Resource Naming
+
+**Requirement**: All Docker resources MUST use project-specific names to prevent conflicts.  
+**要求**：所有 Docker 資源必須使用專案特定名稱以防止衝突。
+
+**The Problem This Solves**: The incident was caused by network name conflicts when new deployment tried to use same network name as existing production, breaking BOTH systems.  
+**這解決的問題**：事故由新部署嘗試使用與現有生產相同的網路名稱導致的網路衝突引起，使兩個系統都損壞。
+
+**Automated Checks (CI/CD Pipeline):**
+
+```bash
+# Check 1: Networks must have project-specific names (not generic "app-network")
+! grep -E "networks:.*\n.*[^a-z0-9_-]*(app-network|default|web|backend)\s*:" docker-compose.yml
+
+# Check 2: Container names must include project prefix
+grep -q "container_name:.*\${PROJECT_NAME}" docker-compose.yml || exit 1
+
+# Check 3: Network names must be defined with project prefix
+grep -q "networks:.*\n.*${PROJECT_NAME}" docker-compose.yml || exit 1
+```
+
+**What blocks merge/release:**
+- ❌ Generic network names (app-network, default, web, backend)
+- ❌ Missing project prefix in container names
+- ❌ No custom network definition
+
+**自動化檢查（CI/CD 流程）：**
+
+**阻止 merge/release 的條件：**
+- ❌ 通用網路名稱（app-network, default, web, backend）
+- ❌ 容器名稱中缺少專案前綴
+- ❌ 無自訂網路定義
+
+**Correct Example:**
+
+```yaml
+services:
+  api:
+    container_name: flemabus-api  # 🔴 Hard Gate: Must include project name
+    networks:
+      - flemabus-network          # 🔴 Hard Gate: Project-specific name
+    restart: always
+
+networks:
+  flemabus-network:               # 🔴 Hard Gate: Explicitly defined
+    driver: bridge
+```
+
+**Why This Matters**: Without this, running `docker-compose up` in different projects can:
+- Conflict with existing networks
+- Break running containers
+- Make recovery impossible without documentation
+
+**為何重要**：沒有這個，在不同專案中運行 `docker-compose up` 可能：
+- 與現有網路衝突
+- 破壞運行中的容器
+- 使恢復變得不可能（無文件記錄）
+
+---
+
+### Standard #2: No Manual Destructive Operations (禁止手動破壞性操作)
+
+#### 🔴 Hard Gate: All Deployments via Git
+
+**Requirement**: Production changes must go through git-tracked docker-compose files. No manual `docker-compose down`.  
+**要求**：生產變更必須通過 git 追蹤的 docker-compose 檔案。禁止手動 `docker-compose down`。
+
+**The Problem This Solves**: Engineer manually ran `docker-compose down` in wrong directory, bringing down production for TWO WEEKS.  
+**這解決的問題**：工程師在錯誤的目錄中手動運行 `docker-compose down`，導致生產停止兩週。
+
+**Automated Checks:**
+
+```bash
+# Check: docker-compose.yml must be in git
+git ls-files docker-compose.yml | grep -q docker-compose.yml || exit 1
+
+# Check: Must have PROJECT_NAME in .env for identification
+grep -q "^PROJECT_NAME=" .env || exit 1
+```
+
+**What blocks merge/release:**
+- ❌ docker-compose.yml not tracked in git
+- ❌ Missing PROJECT_NAME in .env
+
+**阻止 merge/release 的條件：**
+- ❌ docker-compose.yml 未在 git 中追蹤
+- ❌ .env 中缺少 PROJECT_NAME
+
+**Correct Workflow:**
+
+```bash
+# ✅ CORRECT: Deploy via git
+cd /opt/flemabus
+git pull
+docker-compose up -d
+
+# ❌ WRONG: Manual operations without git
+cd /some/directory
+docker-compose down  # Could be wrong directory!
+```
+
+**Protection Mechanism**: Add comment to docker-compose.yml
+
+```yaml
+# PROJECT: Flemabus Production
+# ⚠️ DO NOT manually docker-compose down
+# ⚠️ All changes must go through git pull
+services:
+  # ...
+```
+
+---
+
+### Standard #3: Configuration Backup and Rollback (配置備份與回滾)
+
+#### 🔴 Hard Gate: Git Tags for Deployments
+
+**Requirement**: All production deployments must be tagged in git for rollback capability.  
+**要求**：所有生產部署必須在 git 中標記以具備回滾能力。
+
+**The Problem This Solves**: When system went down, recovery took TWO WEEKS because no one knew the previous working configuration.  
+**這解決的問題**：當系統停止時，恢復花了兩週時間，因為沒人知道之前的工作配置。
+
+**Automated Checks:**
+
+```bash
+# Check: Most recent commit must be tagged
+git describe --exact-match HEAD 2>/dev/null || {
+  echo "❌ HEAD commit must be tagged before production deployment"
+  exit 1
+}
+
+# Check: Tag must follow version format
+git describe --exact-match HEAD | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$" || exit 1
+```
+
+**What blocks merge/release:**
+- ❌ Deploying untagged commits to production
+- ❌ Tags not following version format (v1.0.0)
+
+**阻止 merge/release 的條件：**
+- ❌ 部署未標記的提交到生產環境
+- ❌ 標記未遵循版本格式（v1.0.0）
+
+**Correct Workflow:**
+
+```bash
+# Before production deployment:
+git tag -a v1.2.3 -m "Production release 2026-02-02"
+git push origin v1.2.3
+
+# Deploy
+cd /opt/flemabus
+git fetch --tags
+git checkout v1.2.3
+docker-compose up -d
+
+# Rollback (when needed):
+git checkout v1.2.2  # Previous known good version
+docker-compose up -d
+```
+
+**Why This Matters**: With git tags, rollback takes 30 seconds. Without tags, recovery took TWO WEEKS.  
+**為何重要**：有 git 標記，回滾需要 30 秒。沒有標記，恢復花了兩週。
+
+---
+
+### Standard #4: Service Persistence (服務持久性標準)
 
 #### 🔴 Hard Gate: Automated Configuration Check
 
@@ -427,7 +618,7 @@ sudo reboot now
 
 ---
 
-### Standard #2: Documentation Requirement (文件記錄要求)
+### Standard #5: Documentation Requirement (文件記錄要求)
 
 #### 🔴 Hard Gate: Documentation File Existence
 
@@ -495,34 +686,72 @@ test -f docs/TEST_REPORT.md || exit 1
 **These checks MUST pass before code can be merged or released:**  
 **這些檢查必須在程式碼合併或發布前通過：**
 
-- [ ] `docker-compose.yml` contains `restart: always` for all services
-- [ ] `docker-compose.yml` contains `healthcheck` configuration
-- [ ] `/docs/ARCHITECTURE.md` file exists
-- [ ] `/docs/DEPLOY.md` file exists
-- [ ] `/docs/RESILIENCE.md` file exists
-- [ ] `/docs/TEST_REPORT.md` file exists
+#### Standard #1: Environment Isolation
+- [ ] No generic network names (app-network, default, web, backend)
+- [ ] Container names include project prefix
+- [ ] Custom networks explicitly defined
+
+#### Standard #2: No Manual Destructive Operations
+- [ ] docker-compose.yml tracked in git
+- [ ] PROJECT_NAME defined in .env
+
+#### Standard #3: Configuration Backup
+- [ ] HEAD commit is tagged with version
+- [ ] Tag follows format v1.0.0
+
+#### Standard #4: Service Persistence
+- [ ] All services have `restart: always`
+- [ ] All critical services have healthcheck
+
+#### Standard #5: Documentation
+- [ ] All 4 documentation files exist
 
 **Automated check script:**
 
 ```bash
 #!/bin/bash
-# Pre-merge validation script
+# Pre-merge validation script - Lessons from the 2-week outage
 
-echo "Running Hard Gate checks..."
+echo "Running Hard Gate checks (lessons from the incident)..."
 
-# Check 1: restart policies
+# Standard #1: Environment Isolation (prevents network conflicts)
+echo "Checking environment isolation..."
+if grep -E "networks:.*\n.*[^a-z0-9_-]*(app-network|default|web|backend)\s*:" docker-compose.yml; then
+  echo "❌ Generic network names found - use project-specific names"
+  exit 1
+fi
+
+grep -q "container_name:" docker-compose.yml || { echo "❌ Missing container_name"; exit 1; }
+grep -q "networks:" docker-compose.yml || { echo "❌ Missing custom networks definition"; exit 1; }
+
+# Standard #2: No Manual Operations (prevents accidental docker-compose down)
+echo "Checking git tracking..."
+git ls-files docker-compose.yml | grep -q docker-compose.yml || { 
+  echo "❌ docker-compose.yml not in git"; exit 1; 
+}
+grep -q "^PROJECT_NAME=" .env || { echo "❌ Missing PROJECT_NAME in .env"; exit 1; }
+
+# Standard #3: Rollback Capability (prevents 2-week recovery)
+echo "Checking version tagging..."
+git describe --exact-match HEAD 2>/dev/null || {
+  echo "❌ HEAD not tagged - tag with: git tag -a v1.0.0 -m 'Release'"
+  exit 1
+}
+
+# Standard #4: Service Persistence (survives reboot)
+echo "Checking service persistence..."
 grep -q "restart: always" docker-compose.yml || { echo "❌ Missing restart: always"; exit 1; }
-
-# Check 2: health checks
 grep -q "healthcheck:" docker-compose.yml || { echo "❌ Missing healthcheck"; exit 1; }
 
-# Check 3-6: documentation files
+# Standard #5: Documentation (eliminates single point of knowledge)
+echo "Checking documentation..."
 test -f docs/ARCHITECTURE.md || { echo "❌ Missing ARCHITECTURE.md"; exit 1; }
 test -f docs/DEPLOY.md || { echo "❌ Missing DEPLOY.md"; exit 1; }
 test -f docs/RESILIENCE.md || { echo "❌ Missing RESILIENCE.md"; exit 1; }
 test -f docs/TEST_REPORT.md || { echo "❌ Missing TEST_REPORT.md"; exit 1; }
 
 echo "✅ All Hard Gates passed"
+echo "   These checks prevent: network conflicts, accidental shutdowns, 2-week recovery time"
 ```
 
 ### 🟡 Aspirational Standards (Recommended but not blockers)
@@ -548,32 +777,21 @@ echo "✅ All Hard Gates passed"
 - [ ] Sign-off obtained from DevOps Lead and QA Lead  
       已獲得 DevOps 負責人和 QA 負責人的簽署
 
-### Visual Breakdown (視覺化分解)
+### Quick Reference: Hard Gates Checklist (快速參考：硬性閘門檢查清單)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  TASK COMPLETION BREAKDOWN                                  │
-│  任務完成分解                                                │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  30%  ████████████ Code Implementation (程式碼實作)         │
-│       ├─ Functional code (功能程式碼)                       │
-│       ├─ Unit tests (單元測試)                              │
-│       └─ Code merge (程式碼合併)                            │
-│                                                             │
-│  35%  █████████████ Required Documentation (必需文件記錄)    │
-│       ├─ ARCHITECTURE.md                                    │
-│       ├─ DEPLOY.md                                          │
-│       ├─ RESILIENCE.md                                      │
-│       └─ TEST_REPORT.md                                     │
-│                                                             │
-│  35%  █████████████ Staging Verification (預發環境驗證)     │
-│       ├─ Hard Reboot Test ⚠️ CRITICAL                       │
-│       ├─ Health checks (健康檢查)                           │
-│       ├─ Performance tests (效能測試)                       │
-│       └─ Leadership sign-off (領導簽署)                     │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```bash
+# Run this before submitting PR:
+bash scripts/validate-hardgates.sh
+
+# What it checks:
+✓ Project-specific network names (not "app-network")  
+✓ Container names have project prefix
+✓ docker-compose.yml in git
+✓ PROJECT_NAME in .env  
+✓ Current commit is tagged (v1.0.0 format)
+✓ restart: always present
+✓ healthcheck present
+✓ 4 documentation files exist
 ```
 
 ### Summary: What Blocks Merge/Release (總結：什麼會阻止合併/發布)
@@ -581,9 +799,27 @@ echo "✅ All Hard Gates passed"
 **Pull requests will not be merged if Hard Gates fail:**  
 **如果硬性閘門失敗，拉取請求將不會被合併：**
 
-- ❌ Missing `restart: always` in docker-compose.yml
+**From the 2-week outage, these checks prevent:**
+
+#### Standard #1: Environment Isolation
+- ❌ Generic network names (prevents network conflicts that broke both systems)
+- ❌ Missing container_name with project prefix
+- ❌ No custom network definition
+
+#### Standard #2: No Manual Operations  
+- ❌ docker-compose.yml not in git (prevents accidental wrong-directory operations)
+- ❌ Missing PROJECT_NAME in .env
+
+#### Standard #3: Rollback Capability
+- ❌ Untagged git commits (prevents 2-week recovery time)
+- ❌ Tag format not v1.0.0
+
+#### Standard #4: Service Persistence
+- ❌ Missing `restart: always` 
 - ❌ Missing health check configuration
-- ❌ Missing any of the 4 documentation files
+
+#### Standard #5: Documentation
+- ❌ Missing any of the 4 documentation files (prevents single-point-of-knowledge)
 
 **Everything else is recommended but won't block deployment.**  
 **其他所有內容都是建議但不會阻止部署。**
