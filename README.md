@@ -1198,8 +1198,8 @@ This framework is **effective immediately** and supersedes all previous informal
 
 **Authorized By (授權人):**  
 
-**Ezra Wu**  
-**吳子郇**  
+**Epaphras Wu**  
+**吳豐吉**  
 Engineer, Jasslin  
 工程師，Jasslin
 
