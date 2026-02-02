@@ -46,8 +46,8 @@
 **Date**: January 2026  
 **日期**：2026年1月
 
-**Classification**: Catastrophic Service Outage — Complete System Failure  
-**分類**：災難性服務中斷 — 系統完全故障
+**Classification**: Critical Service Outage — Complete System Failure  
+**分類**：關鍵服務中斷 — 系統完全故障
 
 **Total Downtime**: **TWO WEEKS** of complete service unavailability  
 **總停機時間**：**兩週**的完全服務不可用
@@ -84,8 +84,8 @@ Days passed. Engineers attempted various recovery approaches. All failed. The sy
 **It was not until a specific engineer (Ezra Wu) was consulted that the problem could be diagnosed and resolved.**  
 **直到諮詢特定工程師（吳子郇）後，問題才得以診斷和解決。**
 
-This exposed a **catastrophic single point of failure**: **Critical system knowledge existed only in one person's memory.**  
-這暴露了一個**災難性的單點故障**：**關鍵系統知識僅存在於一個人的記憶中。**
+This exposed a **critical single point of failure**: **Critical system knowledge existed only in one person's memory.**  
+這暴露了一個**關鍵單點故障**：**關鍵系統知識僅存在於一個人的記憶中。**
 
 **The recovery process took TWO WEEKS** — not because of technical complexity, but because of **complete absence of documentation**.  
 **恢復過程耗時兩週** — 不是因為技術複雜性，而是因為**完全缺乏文件記錄**。
@@ -97,8 +97,8 @@ This exposed a **catastrophic single point of failure**: **Critical system knowl
 
 ### Root Cause Analysis (根本原因分析)
 
-The Post-Mortem investigation revealed **two catastrophic, unprofessional failures** that should never exist in a production environment:  
-事後檢討調查揭露了**兩個災難性的、不專業的失誤**，這些失誤在生產環境中絕不應該存在：
+The Post-Mortem investigation revealed **two critical failures** that should not exist in a production environment:  
+事後檢討調查揭露了**兩個關鍵失誤**，這些失誤在生產環境中不應該存在：
 
 #### Failure #1: Service Persistence Failure (服務持久性失敗)
 
@@ -114,8 +114,8 @@ systemctl is-enabled docker.service
 **What this means**: After any reboot (routine, crash, power failure), the Docker daemon would remain offline until manually started.  
 **這意味著什麼**：在任何重啟（例行性、崩潰、電源故障）後，Docker 守護程式將保持離線狀態，直到手動啟動。
 
-**Professional Standard**: System-critical services MUST be enabled for automatic startup. This is **Day 1, Hour 1** knowledge for any systems administrator.  
-**專業標準**：系統關鍵服務必須啟用自動啟動。這是任何系統管理員**第一天第一小時**應具備的知識。
+**Professional Standard**: System-critical services MUST be enabled for automatic startup. This is a fundamental industry standard for system administrators.  
+**專業標準**：系統關鍵服務必須啟用自動啟動。這是系統管理員的基本業界標準。
 
 **How this was missed**: The deployment vendor either:  
 **如何遺漏**：部署廠商要麼：
@@ -171,8 +171,8 @@ There was **no written deployment guide**. The "knowledge" of how to deploy and 
 - Assumptions and tribal knowledge (假設和部落知識)
 - **One specific engineer's personal memory (特定工程師的個人記憶)**
 
-**This created a catastrophic single point of failure: Only ONE person (Ezra Wu) could recover the system.**  
-**這造成了災難性的單點故障：只有一個人（吳子郇）能夠恢復系統。**
+**This created a critical single point of failure: Only ONE person could recover the system.**  
+**這造成了關鍵單點故障：只有一個人能夠恢復系統。**
 
 When multiple engineers attempted recovery and failed, the client suffered **continuous downtime** until that specific engineer could be reached. **This is unacceptable.**  
 當多名工程師嘗試恢復但失敗時，客戶遭受**持續停機**，直到該特定工程師可以聯繫上。**這是不可接受的。**
@@ -197,11 +197,11 @@ The system was deployed directly to production **without any resilience testing*
 - ❌ No acceptance criteria checklist  
   ❌ 無驗收標準檢查清單
 
-**The first time the system's resilience was tested was during a production reboot. It failed catastrophically. The client suffered TWO WEEKS of downtime.**  
-**系統韌性首次測試是在生產環境重啟期間。它災難性地失敗了。客戶遭受了兩週的停機時間。**
+**The first time the system's resilience was tested was during a production reboot. It failed. The client suffered TWO WEEKS of downtime.**  
+**系統韌性首次測試是在生產環境重啟期間。它失敗了。客戶遭受了兩週的停機時間。**
 
-This is **unforgivable professional negligence**.  
-這是**不可原諒的專業疏忽**。
+This represents a serious process failure.  
+這代表嚴重的流程失誤。
 
 #### No Accountability (無問責制)
 
@@ -218,21 +218,21 @@ The vendor said "it's deployed" and we accepted it **without verification**.
 | Impact Category | Details |
 |-----------------|---------|
 | **Service Downtime** | **TWO WEEKS** of complete service unavailability |
-| **Single Point of Failure** | **Multiple engineers could not resolve the issue**; only one specific engineer possessed the knowledge to recover the system; catastrophic knowledge centralization risk |
+| **Single Point of Failure** | **Multiple engineers could not resolve the issue**; only one specific engineer possessed the knowledge to recover the system; critical knowledge centralization risk |
 | **Client Business Impact** | **14 days** of Flemabus service operations completely halted; client unable to serve their end customers; massive revenue loss for client |
-| **Financial Loss** | Catastrophic SLA breach penalties; contract termination risk; potential legal action |
-| **Reputation Damage** | **Irreparable damage** to client trust; Jasslin's technical competence questioned at executive level; client considering competitor migration |
+| **Financial Loss** | Major SLA breach penalties; contract termination risk; potential legal action |
+| **Reputation Damage** | Significant damage to client trust; Jasslin's technical competence questioned at executive level; client considering competitor migration |
 | **Emergency Response Cost** | Multiple senior engineers diverted for **2 weeks**; all other projects delayed; specific engineer had to personally intervene |
-| **Opportunity Cost** | Loss of contract renewal; damaged industry reputation; future client acquisition severely impacted |
+| **Opportunity Cost** | Loss of contract renewal; damaged industry reputation; future client acquisition significantly impacted |
 | **Long-term Consequences** | Client relationship permanently damaged; used as cautionary tale in industry; internal credibility crisis |
 
 | 影響類別 | 詳情 |
 |---------|------|
 | **服務停機時間** | **兩週**的完全服務不可用 |
-| **單點故障** | **多名工程師無法解決問題**；只有特定工程師擁有恢復系統的知識；災難性的知識集中化風險 |
-| **客戶業務影響** | **14 天**的 Flemabus 服務業務完全中止；客戶無法服務其終端客戶；客戶遭受巨大收入損失 |
-| **財務損失** | 災難性 SLA 違約罰款；合約終止風險；潛在法律訴訟 |
-| **聲譽損害** | **無法修復的**客戶信任損害；Jasslin 技術能力在高層受到質疑；客戶考慮遷移至競爭對手 |
+| **單點故障** | **多名工程師無法解決問題**；只有特定工程師擁有恢復系統的知識；關鍵知識集中化風險 |
+| **客戶業務影響** | **14 天**的 Flemabus 服務業務完全中止；客戶無法服務其終端客戶；客戶遭受重大收入損失 |
+| **財務損失** | 重大 SLA 違約罰款；合約終止風險；潛在法律訴訟 |
+| **聲譽損害** | 客戶信任受到重大損害；Jasslin 技術能力在高層受到質疑；客戶考慮遷移至競爭對手 |
 | **緊急應對成本** | 多名資深工程師轉移 **2 週**；所有其他專案延遲；特定工程師必須親自介入 |
 | **機會成本** | 失去合約續約；產業聲譽受損；未來客戶獲取嚴重受影響 |
 | **長期後果** | 客戶關係永久受損；成為產業警示案例；內部信譽危機 |
@@ -255,7 +255,7 @@ It was caused by:
 - ✅ Failure to follow basic professional standards  
 - ✅ Reliance on "manual memory" instead of automation  
 - ✅ **Lack of documentation and verification**  
-- ✅ **Knowledge concentrated in a single person** (catastrophic single point of failure)
+- ✅ **Knowledge concentrated in a single person** (critical single point of failure)
 - ✅ Absence of accountability and enforcement  
 
 **Professional engineering is not optional.**  
@@ -320,8 +320,8 @@ Systems must be **architected to survive failures**, not merely "hoped" to work.
 Documentation is not an afterthought; it is a **first-class deliverable** with the same importance as code.  
 文件記錄不是事後想法；它是與程式碼同等重要的**一流交付物**。
 
-**Critical system knowledge must NEVER exist in only one person's memory.** The incident proved that knowledge centralization is a catastrophic single point of failure.  
-**關鍵系統知識絕不能只存在於一個人的記憶中。**事故證明了知識集中化是災難性的單點故障。
+**Critical system knowledge must NEVER exist in only one person's memory.** The incident proved that knowledge centralization is a critical single point of failure.  
+**關鍵系統知識絕不能只存在於一個人的記憶中。**事故證明了知識集中化是關鍵單點故障。
 
 #### 3. Zero Trust Operations (零信任運營)
 
