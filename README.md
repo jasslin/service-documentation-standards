@@ -78,19 +78,27 @@ This repository defines **enforceable technical requirements** that prevent thes
 
 ### 🔴 Hard Gates (Mandatory, Blocks Release)
 
-Eight automated checks that **MUST pass** before any production deployment:
+Eleven automated checks that **MUST pass** before any production deployment:
 
-1. **Merge Control** 🔴 — Branch protection + CODEOWNERS + CI (enforcement mechanism)
-2. **Automated Release** 🔴 — Pipeline-only deployment, no manual SSH (prevents accidental docker-compose down)
-3. **Least Privilege** 🔴 — Read-only vendor access (limits blast radius, risk management not trust)
-4. **Environment Isolation** — Project-specific naming (prevents network conflicts)
-5. **Git-Tracked Configuration** — No manual operations (prevents wrong-directory accidents)
-6. **Rollback Capability** — Git tags + deployment snapshots (30-second rollback vs 2-week recovery)
-7. **Service Persistence** — restart: always + healthcheck (survives reboots)
-8. **Documentation** — 4 required files (eliminates knowledge single-point-of-failure)
+**Enforcement Mechanisms** (prevent incidents):
+1. **Merge Control** 🔴 — Branch protection + CODEOWNERS + CI
+2. **Automated Release** 🔴 — Pipeline-only deployment, no manual SSH
+3. **Least Privilege** 🔴 — Read-only vendor access (limits blast radius)
 
-**Gates #1-3 are enforcement mechanisms. Gates #4-8 are validated requirements.**  
-**No need to ask for transparency — technical controls enforce it automatically.**
+**Operational Standards** (prevent same failures):
+8. **Environment Isolation** 🔴 — Project names, network naming, port checks (prevents conflicts)
+9. **No Panic Actions** 🔴 — Rollback only, no docker-compose down (prevents escalation)
+10. **System Facts** 🔴 — Complete checklist required (eliminates "I didn't know")
+
+**Technical Requirements** (validated by CI):
+4. **Environment Isolation (CI)** — Container/network naming
+5. **Git-Tracked Configuration** — All config in version control
+6. **Rollback Capability** — Git tags + snapshots
+7. **Service Persistence** — restart: always + healthcheck
+11. **Documentation** — 4 required files + system facts checklist
+
+**Gates #1-3, #8-10 are enforcement mechanisms. Others are automated validations.**  
+**No trust required — technical controls enforce everything.**
 
 **Details**: See [RELEASE_POLICY.md](RELEASE_POLICY.md)  
 **Setup Guide**: See [SETUP_BRANCH_PROTECTION.md](SETUP_BRANCH_PROTECTION.md)
@@ -204,18 +212,19 @@ git tag -a v1.0.0 -m "Initial production release"
 ```
 documentation-management/
 ├── README.md                         ← You are here
-├── RELEASE_POLICY.md                ← Production release requirements (all 8 gates)
+├── RELEASE_POLICY.md                ← Production release requirements (all 11 gates)
 ├── OPS_RUNBOOK.md                   ← Index to all service documentation
 ├── SETUP_BRANCH_PROTECTION.md       ← Gate #1: GitHub branch protection
 ├── SETUP_SSH_RESTRICTION.md         ← Gate #2: SSH access restriction
 ├── SETUP_LEAST_PRIVILEGE.md         ← Gate #3: Least privilege access
 ├── scripts/
-│   ├── validate-hardgates.sh        ← Automated validation (used by CI)
+│   ├── validate-hardgates.sh        ← Automated validation (all gates)
 │   └── snapshot-release.sh          ← Release snapshot generator
 └── templates/
     ├── CODEOWNERS                    ← Code review enforcement
     ├── github-workflow-validate.yml  ← CI validation workflow
     ├── github-workflow-deploy.yml    ← Production deployment pipeline
+    ├── SYSTEM_FACTS_CHECKLIST.md     ← Gate #10: System facts template
     └── docs/                          ← Documentation templates
         ├── ARCHITECTURE.md
         ├── DEPLOY.md

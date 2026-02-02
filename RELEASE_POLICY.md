@@ -719,7 +719,639 @@ services:
 
 ---
 
-### Gate #8: Documentation (文件記錄)
+### Gate #8: Environment Isolation Standard (環境隔離標準) 🔴 **PREVENTS NETWORK CONFLICTS**
+
+**Prevents**: Network conflicts, port collisions, resource interference between projects
+
+**The Problem This Solves:**  
+In the incident, new deployment used same network name as production, causing conflicts that broke BOTH systems.
+
+**Root Cause**: No naming standards, no isolation, shared resources.
+
+#### 8.1 Compose Project Name (Compose 專案名稱)
+
+**MANDATORY: All docker-compose projects MUST define unique project name**
+
+```yaml
+# docker-compose.yml
+name: flemabus-production  # REQUIRED: Unique project name
+
+services:
+  api:
+    # ...
+```
+
+**Or use COMPOSE_PROJECT_NAME in .env:**
+```bash
+# .env
+COMPOSE_PROJECT_NAME=flemabus-production
+```
+
+**Naming Convention:**
+- Format: `{project}-{environment}`
+- Examples: `flemabus-production`, `flemabus-staging`, `service2-dev`
+- Must be lowercase, alphanumeric + hyphens only
+
+**Why this matters:**
+- Without project name: Docker uses directory name (can conflict)
+- With project name: Explicitly controlled, no accidental conflicts
+
+#### 8.2 Network Naming Rules (網路命名規則)
+
+**FORBIDDEN: Generic network names**
+
+```yaml
+# ❌ FORBIDDEN - Generic names
+networks:
+  default:        # Conflicts with other projects
+  app-network:    # Too generic
+  backend:        # Too generic
+  web:            # Too generic
+  db-network:     # Too generic
+```
+
+**REQUIRED: Project-specific network names**
+
+```yaml
+# ✅ REQUIRED - Project-specific names
+networks:
+  flemabus-prod-backend:
+    driver: bridge
+  flemabus-prod-frontend:
+    driver: bridge
+  flemabus-prod-db:
+    driver: bridge
+
+services:
+  api:
+    networks:
+      - flemabus-prod-backend
+      - flemabus-prod-db
+```
+
+**Naming Convention:**
+- Format: `{project}-{environment}-{purpose}`
+- Examples: `flemabus-prod-backend`, `service2-dev-cache`
+- Must include project name as prefix
+
+**Why this matters:**
+- Generic names cause conflicts when multiple projects run on same host
+- Explicit names make it clear which network belongs to which project
+
+#### 8.3 Port Allocation & Conflict Check (端口分配與衝突檢查)
+
+**MANDATORY: Check port availability before deployment**
+
+```bash
+# Check if port is in use
+sudo netstat -tlnp | grep :8080
+# Or: sudo ss -tlnp | grep :8080
+
+# If port is in use, MUST use different port
+# Document all port allocations in SYSTEM_FACTS_CHECKLIST.md
+```
+
+**Port Allocation Rules:**
+
+1. **Reserve port ranges per project:**
+   - Flemabus: 8000-8099
+   - Service2: 8100-8199
+   - Service3: 8200-8299
+
+2. **Document in docker-compose.yml:**
+   ```yaml
+   services:
+     api:
+       ports:
+         - "8080:8080"  # Document: Flemabus API (production)
+     worker:
+       ports:
+         - "8081:8081"  # Document: Flemabus Worker (production)
+   ```
+
+3. **Verify no conflicts:**
+   ```bash
+   # Before deployment
+   for port in 8080 8081 8082; do
+     if sudo ss -tlnp | grep -q ":$port "; then
+       echo "❌ Port $port is in use"
+       exit 1
+     fi
+   done
+   ```
+
+#### 8.4 Prohibit Shared Default Network (禁止共用默認網路)
+
+**FORBIDDEN: Using Docker's default bridge network**
+
+```yaml
+# ❌ FORBIDDEN - No network definition
+services:
+  api:
+    image: my-api
+    # Uses default bridge network (shared with all containers)
+```
+
+**REQUIRED: Explicit custom networks**
+
+```yaml
+# ✅ REQUIRED - Explicit network definition
+services:
+  api:
+    image: my-api
+    networks:
+      - flemabus-prod-backend
+
+networks:
+  flemabus-prod-backend:
+    driver: bridge
+```
+
+**Why this matters:**
+- Default network is shared by ALL containers on host
+- Can't isolate projects
+- Security risk (containers can see each other)
+- No control over network configuration
+
+#### 8.5 Container Naming Convention (容器命名規範)
+
+**REQUIRED: All containers MUST have project-specific names**
+
+```yaml
+services:
+  api:
+    container_name: flemabus-prod-api  # REQUIRED
+    # Not: api, api-service, backend (too generic)
+  
+  worker:
+    container_name: flemabus-prod-worker  # REQUIRED
+    
+  db:
+    container_name: flemabus-prod-postgres  # REQUIRED
+```
+
+**Why this matters:**
+- Generic names: `docker stop api` might stop wrong container
+- Specific names: `docker stop flemabus-prod-api` is unambiguous
+
+#### 8.6 Automated Environment Isolation Checks
+
+```bash
+# Check 1: Project name defined
+grep -q "^name:" docker-compose.yml || grep -q "COMPOSE_PROJECT_NAME" .env || {
+  echo "❌ No project name defined"
+  exit 1
+}
+
+# Check 2: No generic network names
+if grep -Eq "^\s*(default|app-network|backend|frontend|web|db-network):" docker-compose.yml; then
+  echo "❌ Generic network names found"
+  exit 1
+fi
+
+# Check 3: All containers have project-specific names
+if ! grep -q "container_name:.*${PROJECT_NAME}" docker-compose.yml; then
+  echo "❌ Container names don't include project name"
+  exit 1
+fi
+
+# Check 4: Port conflicts
+PORTS=$(grep -oP "(?<=ports:).*?(?=container_name:)" docker-compose.yml | grep -oP "\d+(?=:)" | sort -u)
+for port in $PORTS; do
+  if sudo ss -tlnp | grep -q ":$port "; then
+    echo "❌ Port $port is already in use"
+    exit 1
+  fi
+done
+```
+
+---
+
+### Gate #9: Rollback & No Panic Actions (回滾與禁止恐慌操作) 🔴 **PREVENTS PANIC-DRIVEN DESTRUCTION**
+
+**Prevents**: Panic-driven destructive operations that worsen incidents
+
+**The Problem This Solves:**  
+When deployment fails, engineers panic and run `docker-compose down`, destroying the working system.
+
+**Root Cause**: No rollback procedure, no clear guidance on what to do when things fail.
+
+#### 9.1 FORBIDDEN: "Deploy Failed → docker-compose down" (禁止：部署失敗就 down)
+
+**NEVER do this:**
+
+```bash
+# Deployment fails
+docker-compose up -d
+# Error: service X failed to start
+
+# ❌ PANIC ACTION - FORBIDDEN
+docker-compose down  # Destroys working services too!
+
+# ❌ FORBIDDEN
+docker-compose down && docker-compose up -d  # Destroys then recreates
+
+# ❌ FORBIDDEN
+docker-compose restart  # Restarts ALL services including working ones
+```
+
+**Why this is catastrophic:**
+- Brings down ALL services (including working ones)
+- Loses running state
+- May lose data in memory
+- Extends outage from partial to complete
+
+#### 9.2 REQUIRED: "Deploy Failed → Rollback to Last Known Good" (要求：部署失敗 → 回滾到已知良好版本)
+
+**When deployment fails, ONLY allowed action:**
+
+```bash
+# Step 1: Identify last known good version
+git tag -l | grep "^v" | sort -V | tail -5
+# Example output:
+# v1.2.0  ← Last known good
+# v1.2.1  ← Current failed deployment
+
+# Step 2: Check out last known good
+git checkout v1.2.0
+
+# Step 3: Deploy last known good (NOT down/up)
+docker-compose up -d
+
+# Docker Compose will:
+# - Keep working services running
+# - Only recreate failed/changed services
+# - Minimize downtime
+```
+
+**Result:**
+- Working services stay up
+- Only failed service is replaced
+- Fast recovery (30 seconds vs 2 weeks)
+
+#### 9.3 Emergency Operations Logging (緊急操作記錄)
+
+**MANDATORY: All emergency operations MUST be logged**
+
+**Create log file before ANY emergency action:**
+
+```bash
+# Create emergency log
+LOGFILE="/var/log/emergency-ops-$(date +%Y%m%d-%H%M%S).log"
+
+# Log format
+{
+  echo "=========================================="
+  echo "Emergency Operation Log"
+  echo "=========================================="
+  echo "Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+  echo "Operator: $(whoami)"
+  echo "Hostname: $(hostname)"
+  echo "Incident: [Brief description]"
+  echo ""
+  echo "Commands executed:"
+  echo ""
+} | tee -a "$LOGFILE"
+
+# Execute command with logging
+docker-compose ps 2>&1 | tee -a "$LOGFILE"
+
+# Log results
+{
+  echo ""
+  echo "Result: [Success/Failure]"
+  echo "Services affected: [List]"
+  echo "Next action: [What to do next]"
+  echo "=========================================="
+} | tee -a "$LOGFILE"
+```
+
+**Emergency log must include:**
+- Timestamp (UTC)
+- Operator name
+- What command was run
+- Command output
+- Result (success/failure)
+- Services affected
+- Next planned action
+
+**Why this matters:**
+- Post-incident review needs to know what was done
+- Can't learn from incidents without logs
+- Accountability
+
+#### 9.4 Rollback Decision Tree (回滾決策樹)
+
+**When something goes wrong, follow this decision tree:**
+
+```
+Deployment failed?
+│
+├─ Yes → Is previous version identified?
+│        │
+│        ├─ Yes → git checkout <previous-tag>
+│        │        docker-compose up -d
+│        │        (Partial update, fast recovery)
+│        │
+│        └─ No → Check git tags, find last working version
+│                 Document in SYSTEM_FACTS_CHECKLIST
+│
+└─ No → Service having issues?
+         │
+         ├─ Yes → Is it affecting ALL services?
+         │        │
+         │        ├─ Yes → Check logs first
+         │        │        Do NOT restart all services
+         │        │        Identify root cause
+         │        │        Fix specific issue
+         │        │
+         │        └─ No → docker-compose restart <specific-service>
+         │                 (NOT docker-compose down)
+         │
+         └─ No → Continue deployment
+```
+
+#### 9.5 Prohibited Panic Actions (禁止的恐慌操作)
+
+**NEVER do these during incidents:**
+
+```bash
+# ❌ FORBIDDEN - Destroys all services
+docker-compose down
+
+# ❌ FORBIDDEN - Restarts all services
+docker-compose restart
+
+# ❌ FORBIDDEN - Deletes data
+docker volume rm <volume-name>
+
+# ❌ FORBIDDEN - Removes all containers
+docker rm $(docker ps -aq)
+
+# ❌ FORBIDDEN - Rebuilds during incident
+docker-compose down && docker-compose up -d --build
+
+# ❌ FORBIDDEN - Deletes networks during incident
+docker network rm <network-name>
+```
+
+**Why these are forbidden:**
+- They ESCALATE the problem
+- Turn partial outage into complete outage
+- Make recovery harder, not easier
+
+#### 9.6 Allowed Emergency Actions (允許的緊急操作)
+
+**These are safe during incidents:**
+
+```bash
+# ✅ ALLOWED - Check status
+docker-compose ps
+docker ps
+
+# ✅ ALLOWED - Check logs
+docker-compose logs -f --tail=100 <service>
+docker logs <container>
+
+# ✅ ALLOWED - Restart specific service (not all)
+docker-compose restart <service-name>
+
+# ✅ ALLOWED - Rollback to previous version
+git checkout <previous-tag>
+docker-compose up -d
+
+# ✅ ALLOWED - Check health
+curl http://localhost:8080/health
+
+# ✅ ALLOWED - Check network connectivity
+docker exec <container> ping <other-container>
+```
+
+#### 9.7 Automated Rollback Safeguards
+
+**Create pre-deployment backup:**
+
+```bash
+# Before any deployment
+backup_current_state() {
+  BACKUP_DIR="backups/$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$BACKUP_DIR"
+  
+  # Backup docker-compose.yml
+  cp docker-compose.yml "$BACKUP_DIR/"
+  
+  # Backup .env (if safe to backup)
+  cp .env "$BACKUP_DIR/" 2>/dev/null || true
+  
+  # Record current git tag
+  git describe --tags > "$BACKUP_DIR/version.txt"
+  
+  # Record running containers
+  docker-compose ps > "$BACKUP_DIR/containers-before.txt"
+  
+  echo "Backup created: $BACKUP_DIR"
+}
+
+# Restore from backup
+restore_from_backup() {
+  LATEST_BACKUP=$(ls -td backups/* | head -1)
+  
+  if [ -z "$LATEST_BACKUP" ]; then
+    echo "❌ No backup found"
+    exit 1
+  fi
+  
+  echo "Restoring from: $LATEST_BACKUP"
+  
+  # Restore files
+  cp "$LATEST_BACKUP/docker-compose.yml" ./
+  cp "$LATEST_BACKUP/.env" ./ 2>/dev/null || true
+  
+  # Restore git version
+  PREV_VERSION=$(cat "$LATEST_BACKUP/version.txt")
+  git checkout "$PREV_VERSION"
+  
+  # Deploy
+  docker-compose up -d
+  
+  echo "✅ Rollback complete"
+}
+```
+
+---
+
+### Gate #10: System Facts Checklist (系統事實檢核) 🔴 **ELIMINATES "I DIDN'T KNOW"**
+
+**Prevents**: "I didn't know there were 4 databases", "I thought it used default network"
+
+**The Problem This Solves:**  
+In the incident, vendors didn't know actual system topology, causing wrong troubleshooting.
+
+**Root Cause**: No documented system facts, only assumptions.
+
+#### 10.1 MANDATORY: System Facts Checklist Required
+
+**EVERY production deployment MUST include completed SYSTEM_FACTS_CHECKLIST.md**
+
+**Template location:** `templates/SYSTEM_FACTS_CHECKLIST.md`
+
+**Incomplete checklist = Deployment BLOCKED**
+
+#### 10.2 Required Information
+
+**Checklist MUST document:**
+
+1. **Database Instances** (all of them, not just "the database"):
+   - DB #1: Name, purpose, connected services, port, network
+   - DB #2: Name, purpose, connected services, port, network
+   - DB #3: Name, purpose, connected services, port, network
+   - DB #4: Name, purpose, connected services, port, network
+
+2. **Service Inventory**:
+   - Each service: name, container name, ports, networks, dependencies
+
+3. **Network Topology**:
+   - Each network: name, driver, connected services
+   - No default network usage
+
+4. **Port Allocation**:
+   - All ports documented with conflict check
+
+5. **Volume Mounts**:
+   - All volumes with purpose and backup strategy
+
+6. **External Dependencies**:
+   - All 3rd-party APIs with failure impact
+
+7. **Environment Variables**:
+   - Complete list with descriptions
+
+8. **Rollback Information**:
+   - Last known good version identified and tested
+
+#### 10.3 Verification Requirements
+
+**Before acceptance, verify:**
+
+```bash
+# Check 1: Checklist exists
+test -f docs/SYSTEM_FACTS.md || {
+  echo "❌ SYSTEM_FACTS.md not found"
+  exit 1
+}
+
+# Check 2: No placeholders
+if grep -q "_____________" docs/SYSTEM_FACTS.md; then
+  echo "❌ Checklist contains unfilled fields"
+  exit 1
+fi
+
+# Check 3: No "TBD" or "TODO"
+if grep -qi "TBD\|TODO\|FIXME" docs/SYSTEM_FACTS.md; then
+  echo "❌ Checklist contains placeholder values"
+  exit 1
+fi
+
+# Check 4: All checkboxes marked
+TOTAL_CHECKBOXES=$(grep -c "□" docs/SYSTEM_FACTS.md)
+if [ $TOTAL_CHECKBOXES -gt 10 ]; then
+  echo "❌ $TOTAL_CHECKBOXES unchecked boxes found"
+  exit 1
+fi
+
+# Check 5: Vendor sign-off present
+if ! grep -q "Signature:" docs/SYSTEM_FACTS.md; then
+  echo "❌ Vendor has not signed off"
+  exit 1
+fi
+```
+
+#### 10.4 Knowledge Verification Test
+
+**Before accepting deployment, test vendor knowledge:**
+
+```bash
+# Ask vendor these questions:
+
+1. "How many database instances does this system have?"
+   Expected: Exact number (e.g., 4)
+
+2. "Which service connects to Database #3?"
+   Expected: Specific service name
+
+3. "What happens if the API service goes down?"
+   Expected: List of affected services
+
+4. "What is the rollback procedure?"
+   Expected: git checkout <tag>, docker-compose up -d
+
+5. "Which network does the worker service use?"
+   Expected: Specific network name (with project prefix)
+```
+
+**If vendor cannot answer:**
+- Checklist was copied, not understood
+- Reject deployment
+- Require actual verification
+
+#### 10.5 Example: Database Instance Documentation
+
+**Correct example:**
+
+```markdown
+### Database #1
+
+**Instance Name**: flemabus-prod-main-db  
+**Purpose**: Main application database (users, orders, products)  
+**Connection Sources**:  
+  - API service (flemabus-prod-api)  
+  - Worker service (flemabus-prod-worker)  
+**Port**: 5432  
+**Docker Network**: flemabus-prod-db  
+**Data Volume**: /var/lib/postgresql/data → flemabus-prod-db-data  
+**Backup Location**: /backups/db-main (daily 02:00 UTC)
+
+### Database #2
+
+**Instance Name**: flemabus-prod-analytics-db  
+**Purpose**: Analytics and reporting (read-only replica)  
+**Connection Sources**:  
+  - Analytics service (flemabus-prod-analytics)  
+**Port**: 5433  
+**Docker Network**: flemabus-prod-analytics  
+**Data Volume**: /var/lib/postgresql/data → flemabus-prod-analytics-data  
+**Backup Location**: Replicates from DB #1
+```
+
+**Wrong example (REJECTED):**
+
+```markdown
+### Database #1
+
+**Instance Name**: postgres  ❌ Too generic
+**Purpose**: Database  ❌ Not specific enough
+**Connection Sources**: API  ❌ Which API? Container name?
+**Port**: 5432  
+**Docker Network**: default  ❌ FORBIDDEN
+**Data Volume**: TBD  ❌ Must be filled
+**Backup Location**: _____________  ❌ Incomplete
+```
+
+#### 10.6 Enforcement
+
+**Deployment will be BLOCKED if:**
+
+- Checklist not submitted
+- Checklist incomplete (any blank fields)
+- Checklist contains placeholders ("TBD", "_______")
+- Vendor cannot answer knowledge verification questions
+- Facts don't match actual system (spot-check reveals discrepancies)
+
+**No exceptions. No facts = No deployment.**
+
+---
+
+### Gate #11: Documentation (文件記錄)
 
 **Prevents**: Knowledge single-point-of-failure (only one person can fix issues)
 

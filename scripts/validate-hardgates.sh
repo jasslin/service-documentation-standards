@@ -243,9 +243,141 @@ fi
 echo ""
 
 # ============================================
-# Gate #8: Documentation
+# Gate #8: Environment Isolation Standard
 # ============================================
-echo "📋 Gate #8: Documentation (eliminates knowledge single-point-of-failure)"
+echo "📋 Gate #8: Environment Isolation (prevents conflicts)"
+
+# Check 8.1: Compose project name defined
+if grep -q "^name:" docker-compose.yml 2>/dev/null; then
+    PROJECT_NAME=$(grep "^name:" docker-compose.yml | awk '{print $2}')
+    echo "  ✅ PASS: Project name defined: $PROJECT_NAME"
+elif grep -q "^COMPOSE_PROJECT_NAME=" .env 2>/dev/null; then
+    PROJECT_NAME=$(grep "^COMPOSE_PROJECT_NAME=" .env | cut -d= -f2)
+    echo "  ✅ PASS: Project name in .env: $PROJECT_NAME"
+else
+    echo "  ❌ FAIL: No project name defined"
+    echo "      Add 'name: project-env' to docker-compose.yml"
+    echo "      Or COMPOSE_PROJECT_NAME=project-env to .env"
+    FAILED=1
+fi
+
+# Check 8.2: No generic network names
+if grep -Eq "^\s*(default|app-network|backend|frontend|web|db-network):" docker-compose.yml 2>/dev/null; then
+    echo "  ❌ FAIL: Generic network names found"
+    echo "      Use project-specific names: project-env-backend"
+    FAILED=1
+else
+    echo "  ✅ PASS: No generic network names"
+fi
+
+# Check 8.3: Container names include project prefix
+if docker-compose config 2>/dev/null | grep -q "container_name:"; then
+    if [ -n "$PROJECT_NAME" ] && ! docker-compose config 2>/dev/null | grep "container_name:" | grep -q "$PROJECT_NAME"; then
+        echo "  ⚠️  WARN: Container names should include project name"
+    else
+        echo "  ✅ PASS: Container names include project prefix"
+    fi
+fi
+
+# Check 8.4: Not using default network
+if ! grep -q "^networks:" docker-compose.yml 2>/dev/null; then
+    echo "  ❌ FAIL: No custom networks defined (using default)"
+    echo "      Define custom networks in docker-compose.yml"
+    FAILED=1
+else
+    echo "  ✅ PASS: Custom networks defined"
+fi
+
+echo ""
+
+# ============================================
+# Gate #9: Rollback & No Panic Actions
+# ============================================
+echo "📋 Gate #9: Rollback & No Panic Actions (prevents escalation)"
+
+# Check 9.1: Rollback procedure documented
+if [ -f "docs/RESILIENCE.md" ]; then
+    if grep -qi "rollback\|last known good" docs/RESILIENCE.md; then
+        echo "  ✅ PASS: Rollback procedure documented"
+    else
+        echo "  ⚠️  WARN: RESILIENCE.md should document rollback procedure"
+    fi
+fi
+
+# Check 9.2: Git tags exist for rollback
+TAG_COUNT=$(git tag -l | wc -l)
+if [ "$TAG_COUNT" -gt 0 ]; then
+    LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+    echo "  ✅ PASS: Git tags available for rollback (latest: $LATEST_TAG)"
+else
+    echo "  ⚠️  WARN: No git tags found"
+    echo "      Create version tags for rollback capability"
+fi
+
+# Check 9.3: Backup script exists
+if [ -f "scripts/backup-current-state.sh" ] || grep -q "backup" docker-compose.yml 2>/dev/null; then
+    echo "  ✅ PASS: Backup mechanism found"
+else
+    echo "  ⚠️  WARN: No backup script found"
+    echo "      Consider adding scripts/backup-current-state.sh"
+fi
+
+echo ""
+
+# ============================================
+# Gate #10: System Facts Checklist
+# ============================================
+echo "📋 Gate #10: System Facts Checklist (eliminates assumptions)"
+
+# Check 10.1: Checklist exists
+if [ -f "docs/SYSTEM_FACTS.md" ]; then
+    echo "  ✅ PASS: SYSTEM_FACTS.md exists"
+    
+    # Check 10.2: No placeholders
+    if grep -q "_____________" docs/SYSTEM_FACTS.md; then
+        echo "  ❌ FAIL: Checklist contains unfilled fields"
+        echo "      Complete all sections before deployment"
+        FAILED=1
+    else
+        echo "  ✅ PASS: No unfilled fields"
+    fi
+    
+    # Check 10.3: No TBD/TODO
+    if grep -Eqi "TBD|TODO|FIXME" docs/SYSTEM_FACTS.md; then
+        echo "  ❌ FAIL: Checklist contains placeholder values (TBD/TODO)"
+        FAILED=1
+    else
+        echo "  ✅ PASS: No placeholder values"
+    fi
+    
+    # Check 10.4: Database instances documented
+    if ! grep -q "Database #1" docs/SYSTEM_FACTS.md; then
+        echo "  ❌ FAIL: Database instances not documented"
+        FAILED=1
+    else
+        echo "  ✅ PASS: Database instances documented"
+    fi
+    
+    # Check 10.5: Vendor sign-off
+    if grep -q "Signature:" docs/SYSTEM_FACTS.md; then
+        echo "  ✅ PASS: Sign-off section present"
+    else
+        echo "  ⚠️  WARN: No sign-off section found"
+    fi
+    
+else
+    echo "  ❌ FAIL: docs/SYSTEM_FACTS.md not found"
+    echo "      Copy from templates/SYSTEM_FACTS_CHECKLIST.md"
+    echo "      Complete all sections before deployment"
+    FAILED=1
+fi
+
+echo ""
+
+# ============================================
+# Gate #11: Documentation
+# ============================================
+echo "📋 Gate #11: Documentation (eliminates knowledge single-point-of-failure)"
 
 # Check if running in service repo (has docs/) or this repo (has templates/docs/)
 if [ -d "docs" ]; then
@@ -284,45 +416,56 @@ echo ""
 echo "=========================================="
 
 if [ $FAILED -eq 1 ]; then
-    echo "❌ HARD GATES FAILED (Gates #4-#8)"
+    echo "❌ HARD GATES FAILED"
     echo "   Pull request will be BLOCKED by CI"
     echo ""
     echo "What each gate prevents:"
-    echo "  - Gate #1: Merge Control (enforced by GitHub branch protection)"
-    echo "  - Gate #2: Automated Release (enforced by deployment pipeline)"
-    echo "  - Gate #3: Least Privilege (enforced on production servers)"
-    echo "  - Gate #4: Network conflicts (generic names)"
-    echo "  - Gate #5: Accidental shutdowns (wrong-directory operations)"
-    echo "  - Gate #6: 2-week recovery (enables 30-second rollback)"
-    echo "  - Gate #7: Manual restart after reboot"
-    echo "  - Gate #8: Knowledge single-point-of-failure"
+    echo "  - Gate #1: Merge Control (enforced by GitHub)"
+    echo "  - Gate #2: Automated Release (enforced by pipeline)"
+    echo "  - Gate #3: Least Privilege (enforced on servers)"
+    echo "  - Gate #4: Environment isolation (CI check)"
+    echo "  - Gate #5: Git-tracked config (CI check)"
+    echo "  - Gate #6: Rollback capability (CI check)"
+    echo "  - Gate #7: Service persistence (CI check)"
+    echo "  - Gate #8: Network conflicts (prevents 2-week outage)"
+    echo "  - Gate #9: Panic actions (prevents escalation)"
+    echo "  - Gate #10: System facts (eliminates 'I didn't know')"
+    echo "  - Gate #11: Documentation (eliminates knowledge single-point)"
     echo ""
     echo "For detailed requirements, see:"
     echo "https://github.com/jasslin/documentation-management/blob/main/RELEASE_POLICY.md"
     exit 1
 else
-    echo "✅ ALL HARD GATES PASSED (Gates #4-#8)"
+    echo "✅ ALL HARD GATES PASSED"
     echo ""
-    echo "Gates #1-3 will be enforced when you deploy:"
+    echo "Enforcement mechanisms will activate during deployment:"
     echo ""
     echo "Gate #1 (Merge Control) — GitHub enforces:"
-    echo "  1. Submit pull request"
-    echo "  2. Wait for CODEOWNERS approval"
-    echo "  3. Wait for CI green checkmark"
-    echo "  4. Merge to main"
+    echo "  • PR approval from CODEOWNERS required"
+    echo "  • CI must pass before merge"
     echo ""
-    echo "Gate #2 (Automated Release) — Deployment pipeline enforces:"
-    echo "  1. Create git tag: git tag -a v1.2.3 -m 'Release'"
-    echo "  2. Push tag: git push origin v1.2.3"
-    echo "  3. GitHub Actions automatically deploys"
-    echo "  4. Manual SSH docker-compose operations are FORBIDDEN"
+    echo "Gate #2 (Automated Release) — Pipeline enforces:"
+    echo "  • Only git tags trigger deployment"
+    echo "  • Manual SSH operations blocked"
     echo ""
-    echo "Gate #3 (Least Privilege) — Production servers enforce:"
-    echo "  1. Vendors have read-only database access"
-    echo "  2. Vendors cannot run sudo commands"
-    echo "  3. Vendors cannot run docker-compose down/up"
-    echo "  4. All vendor actions logged"
+    echo "Gate #3 (Least Privilege) — Servers enforce:"
+    echo "  • Vendors: read-only access only"
+    echo "  • All actions logged"
     echo ""
-    echo "Result: Cannot bypass — technical controls enforce all gates."
+    echo "Gate #8 (Environment Isolation) — Prevents:"
+    echo "  • Network name conflicts"
+    echo "  • Port collisions"
+    echo "  • Resource interference"
+    echo ""
+    echo "Gate #9 (No Panic Actions) — Requires:"
+    echo "  • Rollback to last known good (not docker-compose down)"
+    echo "  • Emergency operations must be logged"
+    echo ""
+    echo "Gate #10 (System Facts) — Eliminates:"
+    echo "  • 'I didn't know there were 4 databases'"
+    echo "  • Wrong topology assumptions"
+    echo "  • Incomplete understanding"
+    echo ""
+    echo "Result: Technical controls prevent incident recurrence."
     exit 0
 fi
