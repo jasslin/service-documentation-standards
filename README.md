@@ -119,8 +119,8 @@ systemctl is-enabled docker.service
 
 **How this was missed**: The deployment vendor either:  
 **如何遺漏**：部署廠商要麼：
-- Did not know this was required (incompetence)  
-  不知道這是必需的（無能）
+- Did not know this was required (lack of knowledge)  
+  不知道這是必需的（知識不足）
 - Knew but deliberately skipped it (negligence)  
   知道但故意跳過（疏忽）
 - Assumed "someone else" would do it (systemic failure)  
