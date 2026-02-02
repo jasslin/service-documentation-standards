@@ -148,22 +148,38 @@ echo ""
 # ============================================
 echo "📋 Standard #5: Documentation (eliminates knowledge single-point-of-failure)"
 
-DOCS=(
-    "docs/ARCHITECTURE.md"
-    "docs/DEPLOY.md"
-    "docs/RESILIENCE.md"
-    "docs/TEST_REPORT.md"
-)
+# Check if running in service repo (has docs/) or this repo (has templates/docs/)
+if [ -d "docs" ]; then
+    DOCS_DIR="docs"
+elif [ -d "templates/docs" ]; then
+    echo "  ⚠️  NOTE: Running in documentation-management repo"
+    echo "      This check validates service repositories"
+    echo "      Skipping documentation check for this repo"
+    DOCS_DIR=""
+else
+    echo "  ❌ FAIL: Neither docs/ nor templates/docs/ found"
+    FAILED=1
+    DOCS_DIR=""
+fi
 
-for doc in "${DOCS[@]}"; do
-    echo "  Checking $doc..."
-    if [ ! -f "$doc" ]; then
-        echo "  ❌ FAIL: $doc not found"
-        FAILED=1
-    else
-        echo "  ✅ PASS: $doc exists"
-    fi
-done
+if [ -n "$DOCS_DIR" ]; then
+    DOCS=(
+        "$DOCS_DIR/ARCHITECTURE.md"
+        "$DOCS_DIR/DEPLOY.md"
+        "$DOCS_DIR/RESILIENCE.md"
+        "$DOCS_DIR/TEST_REPORT.md"
+    )
+
+    for doc in "${DOCS[@]}"; do
+        echo "  Checking $doc..."
+        if [ ! -f "$doc" ]; then
+            echo "  ❌ FAIL: $doc not found"
+            FAILED=1
+        else
+            echo "  ✅ PASS: $doc exists"
+        fi
+    done
+fi
 
 echo ""
 echo "=========================================="
