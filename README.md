@@ -56,8 +56,8 @@
 
 ### What Happened (發生了什麼)
 
-A routine server reboot was performed on a production system hosting the **VDRS (Vehicle Detection & Recognition System)** for a mission-critical client.  
-對託管**車輛偵測與辨識系統（VDRS）**的生產伺服器執行例行性重啟，該系統為關鍵客戶部署。
+A routine server reboot was performed on a production system hosting the **Flemabus** service for a mission-critical client.  
+對託管 **Flemabus** 服務的生產伺服器執行例行性重啟，該系統為關鍵客戶部署。
 
 **The server came back online. The services did not.**  
 **伺服器重新上線了。但服務沒有。**
@@ -135,13 +135,13 @@ systemctl is-enabled docker.service
 # What was deployed (部署的內容):
 services:
   api-service:
-    image: vdrs-api:latest
+    image: flemabus-api:latest
     # restart: always ❌ MISSING
 
 # What should have been deployed (應該部署的內容):
 services:
   api-service:
-    image: vdrs-api:latest
+    image: flemabus-api:latest
     restart: always  # ✅ MANDATORY
 ```
 
@@ -219,7 +219,7 @@ The vendor said "it's deployed" and we accepted it **without verification**.
 |-----------------|---------|
 | **Service Downtime** | **TWO WEEKS** of complete service unavailability |
 | **Single Point of Failure** | **Multiple engineers could not resolve the issue**; only one specific engineer possessed the knowledge to recover the system; catastrophic knowledge centralization risk |
-| **Client Business Impact** | **14 days** of vehicle detection operations completely halted; client unable to serve their end customers; massive revenue loss for client |
+| **Client Business Impact** | **14 days** of Flemabus service operations completely halted; client unable to serve their end customers; massive revenue loss for client |
 | **Financial Loss** | Catastrophic SLA breach penalties; contract termination risk; potential legal action |
 | **Reputation Damage** | **Irreparable damage** to client trust; Jasslin's technical competence questioned at executive level; client considering competitor migration |
 | **Emergency Response Cost** | Multiple senior engineers diverted for **2 weeks**; all other projects delayed; specific engineer had to personally intervene |
@@ -230,7 +230,7 @@ The vendor said "it's deployed" and we accepted it **without verification**.
 |---------|------|
 | **服務停機時間** | **兩週**的完全服務不可用 |
 | **單點故障** | **多名工程師無法解決問題**；只有特定工程師擁有恢復系統的知識；災難性的知識集中化風險 |
-| **客戶業務影響** | **14 天**的車輛偵測業務完全中止；客戶無法服務其終端客戶；客戶遭受巨大收入損失 |
+| **客戶業務影響** | **14 天**的 Flemabus 服務業務完全中止；客戶無法服務其終端客戶；客戶遭受巨大收入損失 |
 | **財務損失** | 災難性 SLA 違約罰款；合約終止風險；潛在法律訴訟 |
 | **聲譽損害** | **無法修復的**客戶信任損害；Jasslin 技術能力在高層受到質疑；客戶考慮遷移至競爭對手 |
 | **緊急應對成本** | 多名資深工程師轉移 **2 週**；所有其他專案延遲；特定工程師必須親自介入 |
