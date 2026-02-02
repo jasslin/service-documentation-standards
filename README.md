@@ -580,6 +580,6 @@ Every gate, every check, every requirement has a **specific incident it prevents
 
 ---
 
-**Authorized By** / **授權人**: Ezra Wu (吳豐吉), Engineer  
+**Authorized By** / **授權人**: Epaphras Wu (吳豐吉), Engineer  
 **Scope** / **範圍**: Technical deployment requirements enforceable by engineers  
 **Enforcement** / **執行**: Automated CI/CD checks + Technical controls
