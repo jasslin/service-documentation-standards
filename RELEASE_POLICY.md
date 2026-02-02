@@ -64,11 +64,142 @@ docker-compose up -d
 **Pull requests will be BLOCKED if any check fails.**  
 **如果任何檢查失敗，拉取請求將被阻止。**
 
-### Gate #1: Environment Isolation (環境隔離)
+---
+
+### Gate #1: Merge Control (合併控制) 🔴 **MOST IMPORTANT**
+
+**Prevents**: Unauthorized or untested changes reaching production
+
+**This is the enforcement mechanism for ALL other gates.**  
+**這是所有其他閘門的執行機制。**
+
+#### 1.1 Branch Protection (分支保護)
+
+**Configuration** (on GitHub/GitLab):
+
+```yaml
+# Branch: main, release/*
+Settings:
+  - Require pull request before merging: ✅ YES
+  - Require status checks to pass: ✅ YES
+    - validate-hardgates (CI job)
+  - Require review from CODEOWNERS: ✅ YES
+  - Do not allow bypassing: ✅ YES (no admin override)
+  - Require signed commits: ✅ YES (recommended)
+```
+
+**Result**: Cannot push directly to main. Cannot merge without CI green + approvals.  
+**結果**：無法直接推送到 main。無法在 CI 綠燈 + 批准前合併。
+
+#### 1.2 CODEOWNERS (程式碼所有權)
+
+**Create `.github/CODEOWNERS` in service repository:**
+
+```bash
+# Infrastructure & Deployment - MUST be approved by Ezra Wu
+# 基礎設施與部署 - 必須由 Ezra Wu 批准
+
+# Docker & Container Configuration
+docker-compose*.yml          @ezra-wu
+Dockerfile*                  @ezra-wu
+.dockerignore               @ezra-wu
+
+# Environment & Secrets
+.env*                       @ezra-wu
+*.env                       @ezra-wu
+config/*.env                @ezra-wu
+
+# Database Migrations & Schema
+migrations/                 @ezra-wu
+schema/                     @ezra-wu
+**/migrations/             @ezra-wu
+*.sql                      @ezra-wu
+
+# Infrastructure as Code
+terraform/                  @ezra-wu
+*.tf                       @ezra-wu
+k8s/                       @ezra-wu
+*.yaml                     @ezra-wu
+
+# Deployment Scripts
+scripts/deploy*.sh         @ezra-wu
+scripts/rollback*.sh       @ezra-wu
+deploy/                    @ezra-wu
+
+# CI/CD Pipeline
+.github/workflows/         @ezra-wu
+.gitlab-ci.yml            @ezra-wu
+Jenkinsfile               @ezra-wu
+
+# Documentation (Deployment-related)
+docs/DEPLOY.md            @ezra-wu
+docs/RESILIENCE.md        @ezra-wu
+docs/ARCHITECTURE.md      @ezra-wu
+```
+
+**Result**: Changes to these files CANNOT be merged without your explicit approval.  
+**結果**：這些檔案的變更無法在沒有你明確批准的情況下合併。
+
+#### 1.3 CI/CD Validation (自動化驗證)
+
+**Create `.github/workflows/validate.yml`:**
+
+```yaml
+name: Hard Gates Validation
+
+on:
+  pull_request:
+    branches: [main, release/*]
+  push:
+    branches: [main, release/*]
+
+jobs:
+  validate-hardgates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Hard Gates Check
+        run: |
+          curl -O https://raw.githubusercontent.com/jasslin/documentation-management/main/scripts/validate-hardgates.sh
+          chmod +x validate-hardgates.sh
+          bash validate-hardgates.sh
+      
+      - name: Block merge if validation fails
+        if: failure()
+        run: |
+          echo "❌ Hard Gates validation FAILED"
+          echo "Pull request CANNOT be merged"
+          exit 1
+```
+
+**Result**: Red X on PR if validation fails. Cannot merge.  
+**結果**：驗證失敗則 PR 顯示紅 X。無法合併。
+
+#### 1.4 Why This Works (為何有效)
+
+**Before (failed approach):**
+- ❌ Trust-based: "Please follow best practices"
+- ❌ Optional: Engineers can ignore guidelines
+- ❌ No enforcement: Reviews are subjective
+
+**After (technical control):**
+- ✅ **Cannot merge** without CI green
+- ✅ **Cannot merge** without your approval (for infra changes)
+- ✅ **Cannot bypass** (no admin override)
+- ✅ **Automated** (no manual checking needed)
+
+**You don't need to ask them to "be transparent."**  
+**Technical controls enforce transparency automatically.**  
+**你不需要求他們「願意透明」。技術控制自動強制透明。**
+
+---
+
+### Gate #2: Environment Isolation (環境隔離)
 
 **Prevents**: Network conflicts that break multiple systems
 
-**Checks**:
+**Checks** (automated by validate-hardgates.sh):
 - ❌ Generic network names (app-network, default, web, backend)
 - ❌ Missing container_name with project prefix  
 - ❌ No custom network definition
@@ -88,7 +219,7 @@ networks:
 
 ---
 
-### Gate #2: Git-Tracked Configuration (配置追蹤)
+### Gate #3: Git-Tracked Configuration (配置追蹤)
 
 **Prevents**: Accidental docker-compose down in wrong directory
 
@@ -107,7 +238,7 @@ PROJECT_NAME=projectname
 
 ---
 
-### Gate #3: Rollback Capability (回滾能力)
+### Gate #4: Rollback Capability (回滾能力)
 
 **Prevents**: 2-week recovery time when things break
 
@@ -133,7 +264,7 @@ docker-compose up -d
 
 ---
 
-### Gate #4: Service Persistence (服務持久性)
+### Gate #5: Service Persistence (服務持久性)
 
 **Prevents**: Manual restart required after server reboot
 
@@ -155,7 +286,7 @@ services:
 
 ---
 
-### Gate #5: Documentation (文件記錄)
+### Gate #6: Documentation (文件記錄)
 
 **Prevents**: Knowledge single-point-of-failure (only one person can fix issues)
 

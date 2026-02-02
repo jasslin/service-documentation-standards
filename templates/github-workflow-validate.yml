@@ -1,0 +1,179 @@
+# GitHub Actions Workflow - Hard Gates Validation
+# GitHub Actions 工作流程 - 硬性閘門驗證
+#
+# Purpose: Automatically validate all production deployment requirements
+# 目的：自動驗證所有生產部署要求
+#
+# Setup Instructions:
+# 1. Create .github/workflows/ directory in your service repository
+# 2. Copy this file to .github/workflows/validate-hardgates.yml
+# 3. Enable "Require status checks to pass" in branch protection settings
+# 4. Add "validate-hardgates" as required status check
+#
+# 設定指南：
+# 1. 在你的服務儲存庫中創建 .github/workflows/ 目錄
+# 2. 複製此檔案到 .github/workflows/validate-hardgates.yml
+# 3. 在分支保護設定中啟用「需要狀態檢查通過」
+# 4. 將 "validate-hardgates" 添加為必需的狀態檢查
+
+name: Validate Hard Gates
+
+# Trigger on pull requests and pushes to protected branches
+# 在拉取請求和推送到受保護分支時觸發
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+      - release/*
+      - production
+  push:
+    branches:
+      - main
+      - master
+      - release/*
+      - production
+
+# Prevent concurrent runs for the same PR
+# 防止同一 PR 的並發運行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-hardgates:
+    name: Hard Gates Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for git tag checks
+      
+      # Step 2: Download validation script
+      - name: Download validation script
+        run: |
+          echo "Downloading Hard Gates validation script..."
+          curl -fsSL -o validate-hardgates.sh \
+            https://raw.githubusercontent.com/jasslin/documentation-management/main/scripts/validate-hardgates.sh
+          chmod +x validate-hardgates.sh
+      
+      # Step 3: Run validation
+      - name: Run Hard Gates validation
+        id: validate
+        run: |
+          echo "=========================================="
+          echo "Running Hard Gates Validation"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "PR: ${{ github.event.pull_request.number }}"
+          echo "=========================================="
+          echo ""
+          
+          # Run validation script
+          bash validate-hardgates.sh
+        continue-on-error: true
+      
+      # Step 4: Check result and fail if validation failed
+      - name: Check validation result
+        if: steps.validate.outcome == 'failure'
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "❌ HARD GATES VALIDATION FAILED"
+          echo "=========================================="
+          echo ""
+          echo "This pull request CANNOT be merged because it violates production deployment standards."
+          echo "此拉取請求無法合併，因為它違反了生產部署標準。"
+          echo ""
+          echo "Common issues:"
+          echo "常見問題："
+          echo ""
+          echo "1. Missing 'restart: always' in docker-compose.yml"
+          echo "   缺少 'restart: always' 在 docker-compose.yml 中"
+          echo ""
+          echo "2. Generic network names (use project-specific names)"
+          echo "   通用網路名稱（使用專案特定名稱）"
+          echo ""
+          echo "3. Missing git tag for deployment"
+          echo "   缺少部署的 git 標記"
+          echo ""
+          echo "4. Missing documentation files in docs/"
+          echo "   缺少 docs/ 中的文檔檔案"
+          echo ""
+          echo "For detailed requirements, see:"
+          echo "詳細要求請參閱："
+          echo "https://github.com/jasslin/documentation-management/blob/main/RELEASE_POLICY.md"
+          echo ""
+          exit 1
+      
+      # Step 5: Success message
+      - name: Validation passed
+        if: steps.validate.outcome == 'success'
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "✅ ALL HARD GATES PASSED"
+          echo "=========================================="
+          echo ""
+          echo "This pull request meets all production deployment standards."
+          echo "此拉取請求符合所有生產部署標準。"
+          echo ""
+          echo "Next steps:"
+          echo "1. Request code review from CODEOWNERS"
+          echo "2. After approval, merge to main"
+          echo "3. Tag the commit with version number"
+          echo "4. Deploy to production using the tag"
+          echo ""
+
+  # Optional: Additional checks can be added here
+  # 可選：可以在此添加額外的檢查
+  
+  # Example: Syntax validation for docker-compose.yml
+  validate-docker-compose:
+    name: Validate docker-compose syntax
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check docker-compose.yml syntax
+        run: |
+          if [ -f docker-compose.yml ]; then
+            docker-compose config -q
+            echo "✅ docker-compose.yml syntax is valid"
+          else
+            echo "⚠️  No docker-compose.yml found (skipping)"
+          fi
+  
+  # Example: Check for secrets in commits
+  check-secrets:
+    name: Check for leaked secrets
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Install gitleaks
+        run: |
+          wget -q https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
+          tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+          chmod +x gitleaks
+      
+      - name: Scan for secrets
+        run: |
+          ./gitleaks detect --source . --verbose --no-git || {
+            echo "❌ Potential secrets detected in code"
+            echo "Please remove secrets and use environment variables instead"
+            exit 1
+          }
+          echo "✅ No secrets detected"
+
+# Notifications (optional)
+# Configure GitHub to send notifications when checks fail
+# 通知（可選）
+# 配置 GitHub 在檢查失敗時發送通知

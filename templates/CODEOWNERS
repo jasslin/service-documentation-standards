@@ -1,0 +1,172 @@
+# CODEOWNERS - Code Review Requirements
+# 程式碼所有權 - 程式碼審查要求
+#
+# Purpose: Enforce mandatory review for infrastructure and deployment changes
+# 目的：強制對基礎設施和部署變更進行審查
+#
+# How it works:
+# - Changes to files matching these patterns REQUIRE approval from specified users
+# - Pull requests CANNOT be merged without approval
+# - This is enforced by GitHub branch protection rules
+#
+# 如何運作：
+# - 符合這些模式的檔案變更需要指定用戶的批准
+# - 拉取請求無法在沒有批准的情況下合併
+# - 這由 GitHub 分支保護規則強制執行
+#
+# Setup:
+# 1. Copy this file to .github/CODEOWNERS in your service repository
+# 2. Replace @ezra-wu with actual GitHub username
+# 3. Enable "Require review from Code Owners" in branch protection settings
+#
+# 設定：
+# 1. 複製此檔案到你的服務儲存庫的 .github/CODEOWNERS
+# 2. 將 @ezra-wu 替換為實際的 GitHub 用戶名
+# 3. 在分支保護設定中啟用「需要程式碼所有者審查」
+
+# ============================================
+# Infrastructure & Deployment
+# 基礎設施與部署
+# ============================================
+# These changes can break production and must be reviewed by infrastructure owner
+# 這些變更可能破壞生產環境，必須由基礎設施負責人審查
+
+# Docker & Container Configuration
+docker-compose*.yml          @ezra-wu
+Dockerfile*                  @ezra-wu
+.dockerignore               @ezra-wu
+
+# Environment Variables & Secrets
+.env*                       @ezra-wu
+*.env                       @ezra-wu
+config/*.env                @ezra-wu
+secrets/                    @ezra-wu
+
+# Database Schema & Migrations
+migrations/                 @ezra-wu
+schema/                     @ezra-wu
+**/migrations/             @ezra-wu
+*.sql                      @ezra-wu
+alembic/                   @ezra-wu
+flyway/                    @ezra-wu
+
+# Infrastructure as Code
+terraform/                  @ezra-wu
+*.tf                       @ezra-wu
+*.tfvars                   @ezra-wu
+k8s/                       @ezra-wu
+helm/                      @ezra-wu
+*.yaml                     @ezra-wu  # Kubernetes manifests
+*.yml                      @ezra-wu  # Kubernetes manifests
+
+# Deployment & Operations Scripts
+scripts/deploy*.sh         @ezra-wu
+scripts/rollback*.sh       @ezra-wu
+scripts/backup*.sh         @ezra-wu
+deploy/                    @ezra-wu
+ops/                       @ezra-wu
+
+# CI/CD Pipeline Configuration
+.github/workflows/         @ezra-wu
+.gitlab-ci.yml            @ezra-wu
+.circleci/                @ezra-wu
+Jenkinsfile               @ezra-wu
+azure-pipelines.yml       @ezra-wu
+
+# Nginx & Web Server Configuration
+nginx.conf                 @ezra-wu
+nginx/                     @ezra-wu
+apache/                    @ezra-wu
+*.nginx                    @ezra-wu
+
+# System Configuration
+systemd/                   @ezra-wu
+supervisord.conf          @ezra-wu
+crontab                   @ezra-wu
+
+# ============================================
+# Documentation (Deployment-related)
+# 文檔（部署相關）
+# ============================================
+# These documents describe production systems and must be accurate
+# 這些文檔描述生產系統，必須準確
+
+docs/DEPLOY.md            @ezra-wu
+docs/RESILIENCE.md        @ezra-wu
+docs/ARCHITECTURE.md      @ezra-wu
+docs/TEST_REPORT.md       @ezra-wu
+
+# ============================================
+# Dependency Management
+# 依賴管理
+# ============================================
+# Dependency changes can introduce security vulnerabilities or version conflicts
+# 依賴變更可能引入安全漏洞或版本衝突
+
+package.json              @ezra-wu
+package-lock.json         @ezra-wu
+requirements.txt          @ezra-wu
+Pipfile                   @ezra-wu
+Pipfile.lock             @ezra-wu
+go.mod                    @ezra-wu
+go.sum                    @ezra-wu
+Gemfile                   @ezra-wu
+Gemfile.lock             @ezra-wu
+composer.json            @ezra-wu
+composer.lock            @ezra-wu
+
+# ============================================
+# Security & Access Control
+# 安全與存取控制
+# ============================================
+
+.gitignore                @ezra-wu  # Prevent accidental secret commits
+.dockerignore             @ezra-wu
+.cursorignore             @ezra-wu
+
+# ============================================
+# Network & Service Configuration
+# 網路與服務配置
+# ============================================
+
+traefik/                  @ezra-wu
+caddy/                    @ezra-wu
+haproxy/                  @ezra-wu
+*.toml                    @ezra-wu  # Configuration files
+
+# ============================================
+# Notes for Maintainers
+# 維護者注意事項
+# ============================================
+#
+# Why these files require review:
+# 為什麼這些檔案需要審查：
+#
+# 1. docker-compose.yml:
+#    - Network naming conflicts can break multiple systems
+#    - Missing restart: always causes manual intervention after reboot
+#    - Incorrect volume mounts can cause data loss
+#
+# 2. .env files:
+#    - Wrong environment variables can break production
+#    - Secrets must not be committed to git
+#    - Database connection strings must be correct
+#
+# 3. migrations/:
+#    - Database schema changes are IRREVERSIBLE
+#    - Must be tested thoroughly before production
+#    - Can cause data loss if incorrect
+#
+# 4. CI/CD configs:
+#    - Can bypass security checks if misconfigured
+#    - Can deploy broken code to production
+#    - Can leak secrets if not properly configured
+#
+# 5. Documentation:
+#    - Incorrect documentation leads to operational failures
+#    - Knowledge single-point-of-failure must be prevented
+#    - Recovery procedures must be accurate
+#
+# Add your GitHub username after @ (replace @ezra-wu)
+# Multiple reviewers: @user1 @user2 @team-name
+# Teams: @organization/team-name

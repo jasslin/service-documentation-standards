@@ -14,15 +14,45 @@ set -e
 echo "=========================================="
 echo "Hard Gates Validation"
 echo "From: Jasslin Production Service Standards"
+echo ""
+echo "NOTE: Gate #1 (Merge Control) is enforced by GitHub"
+echo "      This script validates Gates #2-#6"
 echo "=========================================="
 echo ""
 
 FAILED=0
 
 # ============================================
-# Standard #1: Environment Isolation
+# Gate #1: Merge Control
 # ============================================
-echo "📋 Standard #1: Environment Isolation (prevents network conflicts)"
+# Note: This gate is enforced by GitHub branch protection + CODEOWNERS + CI
+# We just verify the files exist here
+
+echo "📋 Gate #1: Merge Control (enforced by GitHub)"
+echo "  Checking for required enforcement files..."
+
+if [ -f ".github/CODEOWNERS" ]; then
+    echo "  ✅ PASS: .github/CODEOWNERS exists"
+else
+    echo "  ⚠️  WARN: .github/CODEOWNERS not found"
+    echo "      This file is needed for code review enforcement"
+    echo "      Copy from: templates/CODEOWNERS"
+fi
+
+if [ -f ".github/workflows/validate-hardgates.yml" ] || [ -f ".github/workflows/validate.yml" ]; then
+    echo "  ✅ PASS: GitHub Actions workflow exists"
+else
+    echo "  ⚠️  WARN: GitHub Actions workflow not found"
+    echo "      This file is needed for CI automation"
+    echo "      Copy from: templates/github-workflow-validate.yml"
+fi
+
+echo ""
+
+# ============================================
+# Gate #2: Environment Isolation
+# ============================================
+echo "📋 Gate #2: Environment Isolation (prevents network conflicts)"
 
 # Check 1.1: No generic network names
 echo "  Checking for generic network names..."
@@ -58,9 +88,9 @@ fi
 echo ""
 
 # ============================================
-# Standard #2: No Manual Destructive Operations
+# Gate #3: Git-Tracked Configuration
 # ============================================
-echo "📋 Standard #2: Git Tracking (prevents accidental wrong-directory operations)"
+echo "📋 Gate #3: Git-Tracked Configuration (prevents accidental operations)"
 
 # Check 2.1: docker-compose.yml in git
 echo "  Checking if docker-compose.yml is tracked in git..."
@@ -90,9 +120,9 @@ fi
 echo ""
 
 # ============================================
-# Standard #3: Rollback Capability
+# Gate #4: Rollback Capability
 # ============================================
-echo "📋 Standard #3: Version Tagging (prevents 2-week recovery)"
+echo "📋 Gate #4: Rollback Capability (prevents 2-week recovery)"
 
 # Check 3.1: Current commit must be tagged
 echo "  Checking if HEAD is tagged..."
@@ -117,9 +147,9 @@ fi
 echo ""
 
 # ============================================
-# Standard #4: Service Persistence
+# Gate #5: Service Persistence
 # ============================================
-echo "📋 Standard #4: Service Persistence (survives reboot)"
+echo "📋 Gate #5: Service Persistence (survives reboot)"
 
 # Check 4.1: restart policies
 echo "  Checking restart policies..."
@@ -144,9 +174,9 @@ fi
 echo ""
 
 # ============================================
-# Standard #5: Documentation
+# Gate #6: Documentation
 # ============================================
-echo "📋 Standard #5: Documentation (eliminates knowledge single-point-of-failure)"
+echo "📋 Gate #6: Documentation (eliminates knowledge single-point-of-failure)"
 
 # Check if running in service repo (has docs/) or this repo (has templates/docs/)
 if [ -d "docs" ]; then
@@ -185,18 +215,29 @@ echo ""
 echo "=========================================="
 
 if [ $FAILED -eq 1 ]; then
-    echo "❌ HARD GATES FAILED"
-    echo "   Pull request will be BLOCKED"
+    echo "❌ HARD GATES FAILED (Gates #2-#6)"
+    echo "   Pull request will be BLOCKED by CI"
     echo ""
     echo "These checks prevent:"
-    echo "  - Network conflicts (Standard #1)"
-    echo "  - Accidental shutdowns (Standard #2)"
-    echo "  - 2-week recovery time (Standard #3)"
-    echo "  - Manual restart after reboot (Standard #4)"
-    echo "  - Knowledge single-point-of-failure (Standard #5)"
+    echo "  - Gate #1: Enforced by GitHub (branch protection + CODEOWNERS)"
+    echo "  - Gate #2: Network conflicts"
+    echo "  - Gate #3: Accidental shutdowns"
+    echo "  - Gate #4: 2-week recovery time"
+    echo "  - Gate #5: Manual restart after reboot"
+    echo "  - Gate #6: Knowledge single-point-of-failure"
+    echo ""
+    echo "For detailed requirements, see:"
+    echo "https://github.com/jasslin/documentation-management/blob/main/RELEASE_POLICY.md"
     exit 1
 else
-    echo "✅ ALL HARD GATES PASSED"
-    echo "   Pull request can be merged"
+    echo "✅ ALL HARD GATES PASSED (Gates #2-#6)"
+    echo ""
+    echo "Gate #1 (Merge Control) will be enforced by GitHub when you:"
+    echo "  1. Submit pull request"
+    echo "  2. Wait for CODEOWNERS approval"
+    echo "  3. Wait for CI green checkmark"
+    echo "  4. Then merge"
+    echo ""
+    echo "You cannot bypass Gate #1 — GitHub enforces it automatically."
     exit 0
 fi

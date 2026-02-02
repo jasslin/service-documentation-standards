@@ -78,15 +78,20 @@ This repository defines **enforceable technical requirements** that prevent thes
 
 ### 🔴 Hard Gates (Mandatory, Blocks Release)
 
-Five automated checks that **MUST pass** before any production deployment:
+Six automated checks that **MUST pass** before any production deployment:
 
-1. **Environment Isolation** — Project-specific naming (prevents network conflicts)
-2. **Git-Tracked Configuration** — No manual operations (prevents accidental shutdowns)
-3. **Rollback Capability** — Git tags required (enables instant rollback)
-4. **Service Persistence** — restart: always + healthcheck (survives reboots)
-5. **Documentation** — 4 required files (eliminates knowledge single-point-of-failure)
+1. **Merge Control** 🔴 **MOST IMPORTANT** — Branch protection + CODEOWNERS + CI (enforcement mechanism)
+2. **Environment Isolation** — Project-specific naming (prevents network conflicts)
+3. **Git-Tracked Configuration** — No manual operations (prevents accidental shutdowns)
+4. **Rollback Capability** — Git tags required (enables instant rollback)
+5. **Service Persistence** — restart: always + healthcheck (survives reboots)
+6. **Documentation** — 4 required files (eliminates knowledge single-point-of-failure)
 
-**Details**: See [RELEASE_POLICY.md](RELEASE_POLICY.md)
+**Gate #1 enforces all others automatically through GitHub.**  
+**No need to ask for transparency — technical controls enforce it.**
+
+**Details**: See [RELEASE_POLICY.md](RELEASE_POLICY.md)  
+**Setup Guide**: See [SETUP_BRANCH_PROTECTION.md](SETUP_BRANCH_PROTECTION.md)
 
 ### 🟡 Aspirational Standards (Recommended)
 
@@ -196,13 +201,16 @@ git tag -a v1.0.0 -m "Initial production release"
 
 ```
 documentation-management/
-├── README.md                    ← You are here
-├── RELEASE_POLICY.md           ← Production release requirements (READ THIS FIRST)
-├── OPS_RUNBOOK.md              ← Index to all service documentation
+├── README.md                         ← You are here
+├── RELEASE_POLICY.md                ← Production release requirements
+├── OPS_RUNBOOK.md                   ← Index to all service documentation
+├── SETUP_BRANCH_PROTECTION.md       ← GitHub branch protection setup (START HERE)
 ├── scripts/
-│   └── validate-hardgates.sh   ← Automated validation (run before every PR)
+│   └── validate-hardgates.sh        ← Automated validation (used by CI)
 └── templates/
-    └── docs/                    ← Templates for new services
+    ├── CODEOWNERS                    ← Code review enforcement
+    ├── github-workflow-validate.yml  ← CI/CD validation workflow
+    └── docs/                          ← Documentation templates
         ├── ARCHITECTURE.md
         ├── DEPLOY.md
         ├── RESILIENCE.md
