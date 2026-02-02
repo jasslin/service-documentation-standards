@@ -195,7 +195,165 @@ jobs:
 
 ---
 
-### Gate #2: Environment Isolation (環境隔離)
+### Gate #2: Automated Release Pipeline (自動化釋出管道) 🔴 **PREVENTS MANUAL SSH OPERATIONS**
+
+**Prevents**: Manual SSH operations that caused 2-week outage (accidental docker-compose down)
+
+**The Problem This Solves:**  
+In the incident, engineer manually SSH'd to production and ran `docker-compose down` in wrong directory, bringing down production for 2 weeks.
+
+**Solution: Production releases MUST go through automated pipeline. Manual SSH operations are FORBIDDEN.**  
+**解決方案：生產釋出必須通過自動化管道。禁止手動 SSH 操作。**
+
+#### 2.1 Deployment Method (部署方式)
+
+**✅ ONLY ALLOWED:**
+```bash
+# On your local machine:
+git tag -a v1.2.3 -m "Production release"
+git push origin v1.2.3
+
+# GitHub Actions pipeline automatically:
+# 1. Validates all hard gates
+# 2. Builds and pushes Docker images
+# 3. Creates deployment artifact (snapshot)
+# 4. SSHs to production server
+# 5. Deploys using the artifact
+# 6. Verifies health checks
+# 7. Stores rollback snapshot
+```
+
+**❌ FORBIDDEN:**
+```bash
+# Manual SSH operations are FORBIDDEN:
+ssh production-server
+cd /opt/service
+docker-compose down     # ❌ FORBIDDEN - caused 2-week outage
+docker-compose up -d    # ❌ FORBIDDEN - must use pipeline
+vim docker-compose.yml  # ❌ FORBIDDEN - must go through git
+docker-compose pull     # ❌ FORBIDDEN - must use pipeline
+```
+
+#### 2.2 Required Pipeline Configuration
+
+**Create `.github/workflows/deploy-production.yml`:**
+
+Pipeline MUST:
+- Only trigger on git tags (v*.*.*)
+- Run all hard gate validations
+- Build images with digest pinning
+- Create deployment snapshot (artifact)
+- Deploy via controlled SSH (read-only key)
+- Store rollback artifact
+- Verify health checks post-deployment
+
+**Template available at**: `templates/github-workflow-deploy.yml`
+
+#### 2.3 Deployment Artifact (可回滾 Artifact)
+
+**Every production release MUST generate snapshot containing:**
+
+```
+deployment-artifacts/v1.2.3/
+├── docker-compose.yml           # Exact compose config used
+├── docker-images.digest         # Image digests for rollback
+├── env-template.txt             # Env var keys (no secrets)
+└── deployment-metadata.json     # Timestamp, deployer, commit
+```
+
+**Image digest example:**
+```
+# docker-images.digest
+api-service@sha256:abc123...
+worker-service@sha256:def456...
+```
+
+**Why this matters:**  
+- With digest: Can rollback to EXACT same image (30 seconds)
+- Without digest: "v1.2.2" tag might have been overwritten, impossible to rollback
+
+**Env template example:**
+```bash
+# env-template.txt
+# Production deployment v1.2.3
+# Keys present (values not shown for security):
+
+DATABASE_URL=***
+API_KEY=***
+SECRET_TOKEN=***
+PROJECT_NAME=flemabus
+ENVIRONMENT=production
+```
+
+#### 2.4 SSH Access Control (SSH 存取控制)
+
+**Production servers MUST have two types of SSH keys:**
+
+1. **Deploy Key (automation only):**
+   ```bash
+   # Restricted to deployment commands only
+   # Can only: git pull, docker-compose up -d (using artifacts)
+   # Cannot: docker-compose down, vim, rm
+   ```
+
+2. **Emergency Key (break-glass only):**
+   ```bash
+   # For emergency incidents ONLY
+   # Requires: Engineering Lead approval + incident ticket
+   # Logged: All commands are logged and reviewed
+   ```
+
+**How to restrict SSH commands** (in `~/.ssh/authorized_keys`):
+```bash
+# Deploy key (restricted)
+command="bash /opt/scripts/deploy-only.sh",no-pty,no-port-forwarding ssh-rsa AAAA...
+
+# Emergency key (logged)
+command="bash /opt/scripts/audit-shell.sh",no-port-forwarding ssh-rsa AAAA...
+```
+
+**Deploy-only script** (`/opt/scripts/deploy-only.sh`):
+```bash
+#!/bin/bash
+# Only allow specific deployment commands
+
+case "$SSH_ORIGINAL_COMMAND" in
+  "git pull")
+    cd /opt/$PROJECT && git pull
+    ;;
+  "deploy-from-artifact "*")
+    # Deploy using pre-built artifact
+    bash /opt/scripts/deploy-from-artifact.sh "$2"
+    ;;
+  *)
+    echo "❌ Command not allowed: $SSH_ORIGINAL_COMMAND"
+    echo "Production deployments must go through GitHub Actions pipeline"
+    exit 1
+    ;;
+esac
+```
+
+#### 2.5 Automated Checks (自動化檢查)
+
+```bash
+# Check 1: Production deployment workflow exists
+test -f .github/workflows/deploy-production.yml || exit 1
+
+# Check 2: Workflow only triggers on tags
+grep -q "tags:" .github/workflows/deploy-production.yml || exit 1
+
+# Check 3: Snapshot script present
+test -f scripts/snapshot-release.sh || exit 1
+```
+
+**What blocks merge:**
+- ❌ Missing deployment pipeline configuration
+- ❌ Pipeline allows manual trigger
+- ❌ No snapshot/artifact generation
+
+---
+
+### Gate #3: Environment Isolation (環境隔離)
 
 **Prevents**: Network conflicts that break multiple systems
 
@@ -219,7 +377,7 @@ networks:
 
 ---
 
-### Gate #3: Git-Tracked Configuration (配置追蹤)
+### Gate #4: Git-Tracked Configuration (配置追蹤)
 
 **Prevents**: Accidental docker-compose down in wrong directory
 
@@ -238,7 +396,7 @@ PROJECT_NAME=projectname
 
 ---
 
-### Gate #4: Rollback Capability (回滾能力)
+### Gate #5: Rollback Capability (回滾能力)
 
 **Prevents**: 2-week recovery time when things break
 
@@ -264,7 +422,7 @@ docker-compose up -d
 
 ---
 
-### Gate #5: Service Persistence (服務持久性)
+### Gate #6: Service Persistence (服務持久性)
 
 **Prevents**: Manual restart required after server reboot
 
@@ -286,7 +444,7 @@ services:
 
 ---
 
-### Gate #6: Documentation (文件記錄)
+### Gate #7: Documentation (文件記錄)
 
 **Prevents**: Knowledge single-point-of-failure (only one person can fix issues)
 

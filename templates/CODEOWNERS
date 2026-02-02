@@ -16,12 +16,12 @@
 #
 # Setup:
 # 1. Copy this file to .github/CODEOWNERS in your service repository
-# 2. Replace @ezra-wu with actual GitHub username
+# 2. Replace @ezra-jasslin with actual GitHub username
 # 3. Enable "Require review from Code Owners" in branch protection settings
 #
 # 設定：
 # 1. 複製此檔案到你的服務儲存庫的 .github/CODEOWNERS
-# 2. 將 @ezra-wu 替換為實際的 GitHub 用戶名
+# 2. 將 @ezra-jasslin 替換為實際的 GitHub 用戶名
 # 3. 在分支保護設定中啟用「需要程式碼所有者審查」
 
 # ============================================
@@ -32,57 +32,57 @@
 # 這些變更可能破壞生產環境，必須由基礎設施負責人審查
 
 # Docker & Container Configuration
-docker-compose*.yml          @ezra-wu
-Dockerfile*                  @ezra-wu
-.dockerignore               @ezra-wu
+docker-compose*.yml          @ezra-jasslin
+Dockerfile*                  @ezra-jasslin
+.dockerignore               @ezra-jasslin
 
 # Environment Variables & Secrets
-.env*                       @ezra-wu
-*.env                       @ezra-wu
-config/*.env                @ezra-wu
-secrets/                    @ezra-wu
+.env*                       @ezra-jasslin
+*.env                       @ezra-jasslin
+config/*.env                @ezra-jasslin
+secrets/                    @ezra-jasslin
 
 # Database Schema & Migrations
-migrations/                 @ezra-wu
-schema/                     @ezra-wu
-**/migrations/             @ezra-wu
-*.sql                      @ezra-wu
-alembic/                   @ezra-wu
-flyway/                    @ezra-wu
+migrations/                 @ezra-jasslin
+schema/                     @ezra-jasslin
+**/migrations/             @ezra-jasslin
+*.sql                      @ezra-jasslin
+alembic/                   @ezra-jasslin
+flyway/                    @ezra-jasslin
 
 # Infrastructure as Code
-terraform/                  @ezra-wu
-*.tf                       @ezra-wu
-*.tfvars                   @ezra-wu
-k8s/                       @ezra-wu
-helm/                      @ezra-wu
-*.yaml                     @ezra-wu  # Kubernetes manifests
-*.yml                      @ezra-wu  # Kubernetes manifests
+terraform/                  @ezra-jasslin
+*.tf                       @ezra-jasslin
+*.tfvars                   @ezra-jasslin
+k8s/                       @ezra-jasslin
+helm/                      @ezra-jasslin
+*.yaml                     @ezra-jasslin  # Kubernetes manifests
+*.yml                      @ezra-jasslin  # Kubernetes manifests
 
 # Deployment & Operations Scripts
-scripts/deploy*.sh         @ezra-wu
-scripts/rollback*.sh       @ezra-wu
-scripts/backup*.sh         @ezra-wu
-deploy/                    @ezra-wu
-ops/                       @ezra-wu
+scripts/deploy*.sh         @ezra-jasslin
+scripts/rollback*.sh       @ezra-jasslin
+scripts/backup*.sh         @ezra-jasslin
+deploy/                    @ezra-jasslin
+ops/                       @ezra-jasslin
 
 # CI/CD Pipeline Configuration
-.github/workflows/         @ezra-wu
-.gitlab-ci.yml            @ezra-wu
-.circleci/                @ezra-wu
-Jenkinsfile               @ezra-wu
-azure-pipelines.yml       @ezra-wu
+.github/workflows/         @ezra-jasslin
+.gitlab-ci.yml            @ezra-jasslin
+.circleci/                @ezra-jasslin
+Jenkinsfile               @ezra-jasslin
+azure-pipelines.yml       @ezra-jasslin
 
 # Nginx & Web Server Configuration
-nginx.conf                 @ezra-wu
-nginx/                     @ezra-wu
-apache/                    @ezra-wu
-*.nginx                    @ezra-wu
+nginx.conf                 @ezra-jasslin
+nginx/                     @ezra-jasslin
+apache/                    @ezra-jasslin
+*.nginx                    @ezra-jasslin
 
 # System Configuration
-systemd/                   @ezra-wu
-supervisord.conf          @ezra-wu
-crontab                   @ezra-wu
+systemd/                   @ezra-jasslin
+supervisord.conf          @ezra-jasslin
+crontab                   @ezra-jasslin
 
 # ============================================
 # Documentation (Deployment-related)
@@ -91,10 +91,10 @@ crontab                   @ezra-wu
 # These documents describe production systems and must be accurate
 # 這些文檔描述生產系統，必須準確
 
-docs/DEPLOY.md            @ezra-wu
-docs/RESILIENCE.md        @ezra-wu
-docs/ARCHITECTURE.md      @ezra-wu
-docs/TEST_REPORT.md       @ezra-wu
+docs/DEPLOY.md            @ezra-jasslin
+docs/RESILIENCE.md        @ezra-jasslin
+docs/ARCHITECTURE.md      @ezra-jasslin
+docs/TEST_REPORT.md       @ezra-jasslin
 
 # ============================================
 # Dependency Management
@@ -103,36 +103,36 @@ docs/TEST_REPORT.md       @ezra-wu
 # Dependency changes can introduce security vulnerabilities or version conflicts
 # 依賴變更可能引入安全漏洞或版本衝突
 
-package.json              @ezra-wu
-package-lock.json         @ezra-wu
-requirements.txt          @ezra-wu
-Pipfile                   @ezra-wu
-Pipfile.lock             @ezra-wu
-go.mod                    @ezra-wu
-go.sum                    @ezra-wu
-Gemfile                   @ezra-wu
-Gemfile.lock             @ezra-wu
-composer.json            @ezra-wu
-composer.lock            @ezra-wu
+package.json              @ezra-jasslin
+package-lock.json         @ezra-jasslin
+requirements.txt          @ezra-jasslin
+Pipfile                   @ezra-jasslin
+Pipfile.lock             @ezra-jasslin
+go.mod                    @ezra-jasslin
+go.sum                    @ezra-jasslin
+Gemfile                   @ezra-jasslin
+Gemfile.lock             @ezra-jasslin
+composer.json            @ezra-jasslin
+composer.lock            @ezra-jasslin
 
 # ============================================
 # Security & Access Control
 # 安全與存取控制
 # ============================================
 
-.gitignore                @ezra-wu  # Prevent accidental secret commits
-.dockerignore             @ezra-wu
-.cursorignore             @ezra-wu
+.gitignore                @ezra-jasslin  # Prevent accidental secret commits
+.dockerignore             @ezra-jasslin
+.cursorignore             @ezra-jasslin
 
 # ============================================
 # Network & Service Configuration
 # 網路與服務配置
 # ============================================
 
-traefik/                  @ezra-wu
-caddy/                    @ezra-wu
-haproxy/                  @ezra-wu
-*.toml                    @ezra-wu  # Configuration files
+traefik/                  @ezra-jasslin
+caddy/                    @ezra-jasslin
+haproxy/                  @ezra-jasslin
+*.toml                    @ezra-jasslin  # Configuration files
 
 # ============================================
 # Notes for Maintainers
@@ -167,6 +167,6 @@ haproxy/                  @ezra-wu
 #    - Knowledge single-point-of-failure must be prevented
 #    - Recovery procedures must be accurate
 #
-# Add your GitHub username after @ (replace @ezra-wu)
+# Add your GitHub username after @ (replace @ezra-jasslin)
 # Multiple reviewers: @user1 @user2 @team-name
 # Teams: @organization/team-name

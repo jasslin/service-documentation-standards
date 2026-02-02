@@ -78,17 +78,18 @@ This repository defines **enforceable technical requirements** that prevent thes
 
 ### 🔴 Hard Gates (Mandatory, Blocks Release)
 
-Six automated checks that **MUST pass** before any production deployment:
+Seven automated checks that **MUST pass** before any production deployment:
 
-1. **Merge Control** 🔴 **MOST IMPORTANT** — Branch protection + CODEOWNERS + CI (enforcement mechanism)
-2. **Environment Isolation** — Project-specific naming (prevents network conflicts)
-3. **Git-Tracked Configuration** — No manual operations (prevents accidental shutdowns)
-4. **Rollback Capability** — Git tags required (enables instant rollback)
-5. **Service Persistence** — restart: always + healthcheck (survives reboots)
-6. **Documentation** — 4 required files (eliminates knowledge single-point-of-failure)
+1. **Merge Control** 🔴 — Branch protection + CODEOWNERS + CI (enforcement mechanism)
+2. **Automated Release** 🔴 — Pipeline-only deployment, no manual SSH (prevents accidental docker-compose down)
+3. **Environment Isolation** — Project-specific naming (prevents network conflicts)
+4. **Git-Tracked Configuration** — No manual operations (prevents wrong-directory accidents)
+5. **Rollback Capability** — Git tags + deployment snapshots (30-second rollback vs 2-week recovery)
+6. **Service Persistence** — restart: always + healthcheck (survives reboots)
+7. **Documentation** — 4 required files (eliminates knowledge single-point-of-failure)
 
-**Gate #1 enforces all others automatically through GitHub.**  
-**No need to ask for transparency — technical controls enforce it.**
+**Gates #1-2 are enforcement mechanisms. Gates #3-7 are validated requirements.**  
+**No need to ask for transparency — technical controls enforce it automatically.**
 
 **Details**: See [RELEASE_POLICY.md](RELEASE_POLICY.md)  
 **Setup Guide**: See [SETUP_BRANCH_PROTECTION.md](SETUP_BRANCH_PROTECTION.md)

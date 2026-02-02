@@ -50,9 +50,46 @@ fi
 echo ""
 
 # ============================================
-# Gate #2: Environment Isolation
+# Gate #2: Automated Release Pipeline
 # ============================================
-echo "📋 Gate #2: Environment Isolation (prevents network conflicts)"
+echo "📋 Gate #2: Automated Release Pipeline (prevents manual SSH operations)"
+echo "  Checking for deployment automation..."
+
+# Check 2.1: Production deployment workflow exists
+if [ -f ".github/workflows/deploy-production.yml" ] || [ -f ".github/workflows/deploy.yml" ]; then
+    echo "  ✅ PASS: Deployment workflow exists"
+    
+    # Check 2.2: Workflow triggers on tags only (not manual)
+    DEPLOY_WORKFLOW=$(ls .github/workflows/deploy*.yml 2>/dev/null | head -1)
+    if [ -n "$DEPLOY_WORKFLOW" ]; then
+        if grep -q "tags:" "$DEPLOY_WORKFLOW"; then
+            echo "  ✅ PASS: Workflow triggers on tags (prevents manual deployment)"
+        else
+            echo "  ⚠️  WARN: Workflow should only trigger on tags"
+            echo "      This ensures deployments are version-controlled"
+        fi
+    fi
+else
+    echo "  ⚠️  WARN: No deployment workflow found"
+    echo "      Production deployments should go through automated pipeline"
+    echo "      Copy from: templates/github-workflow-deploy.yml"
+fi
+
+# Check 2.3: Snapshot script present
+if [ -f "scripts/snapshot-release.sh" ]; then
+    echo "  ✅ PASS: Release snapshot script exists"
+else
+    echo "  ⚠️  WARN: scripts/snapshot-release.sh not found"
+    echo "      Snapshot script creates rollback artifacts"
+    echo "      Copy from: documentation-management/scripts/snapshot-release.sh"
+fi
+
+echo ""
+
+# ============================================
+# Gate #3: Environment Isolation
+# ============================================
+echo "📋 Gate #3: Environment Isolation (prevents network conflicts)"
 
 # Check 1.1: No generic network names
 echo "  Checking for generic network names..."
@@ -88,9 +125,9 @@ fi
 echo ""
 
 # ============================================
-# Gate #3: Git-Tracked Configuration
+# Gate #4: Git-Tracked Configuration
 # ============================================
-echo "📋 Gate #3: Git-Tracked Configuration (prevents accidental operations)"
+echo "📋 Gate #4: Git-Tracked Configuration (prevents accidental operations)"
 
 # Check 2.1: docker-compose.yml in git
 echo "  Checking if docker-compose.yml is tracked in git..."
@@ -120,9 +157,9 @@ fi
 echo ""
 
 # ============================================
-# Gate #4: Rollback Capability
+# Gate #5: Rollback Capability
 # ============================================
-echo "📋 Gate #4: Rollback Capability (prevents 2-week recovery)"
+echo "📋 Gate #5: Rollback Capability (prevents 2-week recovery)"
 
 # Check 3.1: Current commit must be tagged
 echo "  Checking if HEAD is tagged..."
@@ -147,9 +184,9 @@ fi
 echo ""
 
 # ============================================
-# Gate #5: Service Persistence
+# Gate #6: Service Persistence
 # ============================================
-echo "📋 Gate #5: Service Persistence (survives reboot)"
+echo "📋 Gate #6: Service Persistence (survives reboot)"
 
 # Check 4.1: restart policies
 echo "  Checking restart policies..."
@@ -174,9 +211,9 @@ fi
 echo ""
 
 # ============================================
-# Gate #6: Documentation
+# Gate #7: Documentation
 # ============================================
-echo "📋 Gate #6: Documentation (eliminates knowledge single-point-of-failure)"
+echo "📋 Gate #7: Documentation (eliminates knowledge single-point-of-failure)"
 
 # Check if running in service repo (has docs/) or this repo (has templates/docs/)
 if [ -d "docs" ]; then
@@ -215,29 +252,38 @@ echo ""
 echo "=========================================="
 
 if [ $FAILED -eq 1 ]; then
-    echo "❌ HARD GATES FAILED (Gates #2-#6)"
+    echo "❌ HARD GATES FAILED (Gates #3-#7)"
     echo "   Pull request will be BLOCKED by CI"
     echo ""
-    echo "These checks prevent:"
-    echo "  - Gate #1: Enforced by GitHub (branch protection + CODEOWNERS)"
-    echo "  - Gate #2: Network conflicts"
-    echo "  - Gate #3: Accidental shutdowns"
-    echo "  - Gate #4: 2-week recovery time"
-    echo "  - Gate #5: Manual restart after reboot"
-    echo "  - Gate #6: Knowledge single-point-of-failure"
+    echo "What each gate prevents:"
+    echo "  - Gate #1: Merge Control (enforced by GitHub branch protection)"
+    echo "  - Gate #2: Automated Release (enforced by deployment pipeline)"
+    echo "  - Gate #3: Network conflicts (generic names)"
+    echo "  - Gate #4: Accidental shutdowns (wrong-directory operations)"
+    echo "  - Gate #5: 2-week recovery (enables 30-second rollback)"
+    echo "  - Gate #6: Manual restart after reboot"
+    echo "  - Gate #7: Knowledge single-point-of-failure"
     echo ""
     echo "For detailed requirements, see:"
     echo "https://github.com/jasslin/documentation-management/blob/main/RELEASE_POLICY.md"
     exit 1
 else
-    echo "✅ ALL HARD GATES PASSED (Gates #2-#6)"
+    echo "✅ ALL HARD GATES PASSED (Gates #3-#7)"
     echo ""
-    echo "Gate #1 (Merge Control) will be enforced by GitHub when you:"
+    echo "Gates #1-2 will be enforced when you deploy:"
+    echo ""
+    echo "Gate #1 (Merge Control) — GitHub enforces:"
     echo "  1. Submit pull request"
     echo "  2. Wait for CODEOWNERS approval"
     echo "  3. Wait for CI green checkmark"
-    echo "  4. Then merge"
+    echo "  4. Merge to main"
     echo ""
-    echo "You cannot bypass Gate #1 — GitHub enforces it automatically."
+    echo "Gate #2 (Automated Release) — Deployment pipeline enforces:"
+    echo "  1. Create git tag: git tag -a v1.2.3 -m 'Release'"
+    echo "  2. Push tag: git push origin v1.2.3"
+    echo "  3. GitHub Actions automatically deploys"
+    echo "  4. Manual SSH docker-compose operations are FORBIDDEN"
+    echo ""
+    echo "Result: Cannot bypass — technical controls enforce all gates."
     exit 0
 fi

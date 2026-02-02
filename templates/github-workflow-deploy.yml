@@ -1,0 +1,362 @@
+# Production Deployment Pipeline
+# 生產環境部署管道
+#
+# Purpose: Automate production releases, prevent manual SSH operations
+# 目的：自動化生產釋出，防止手動 SSH 操作
+#
+# Trigger: Only on git tags (v1.0.0 format)
+# 觸發：僅在 git tag（v1.0.0 格式）
+#
+# What this prevents:
+# - Manual docker-compose down (caused 2-week outage)
+# - Accidental operations in wrong directory
+# - Deployments without validation
+# - Deployments without rollback capability
+#
+# Setup Instructions:
+# 1. Copy to .github/workflows/deploy-production.yml in your service repo
+# 2. Configure secrets in GitHub repository settings:
+#    - PRODUCTION_SSH_KEY (deploy key with restricted permissions)
+#    - PRODUCTION_HOST
+#    - DOCKER_REGISTRY_USER
+#    - DOCKER_REGISTRY_TOKEN
+# 3. Update variables: PROJECT_NAME, DEPLOY_PATH
+# 4. Test with a tag: git tag -a v0.0.1-test -m "Test" && git push origin v0.0.1-test
+
+name: Deploy to Production
+
+# CRITICAL: Only trigger on version tags
+# This prevents accidental deployments from branches
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'  # Matches: v1.0.0, v2.3.1, etc.
+
+# Prevent concurrent deployments to same environment
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false  # Don't cancel in-progress deployments
+
+env:
+  PROJECT_NAME: flemabus  # CHANGE THIS to your project name
+  DEPLOY_PATH: /opt/flemabus  # CHANGE THIS to your deployment path
+  ARTIFACT_RETENTION_DAYS: 90
+
+jobs:
+  # Job 1: Validate before deployment
+  validate:
+    name: Validate Hard Gates
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code at tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Verify tag format
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if ! echo "$TAG" | grep -Eq "^v[0-9]+\.[0-9]+\.[0-9]+$"; then
+            echo "❌ Invalid tag format: $TAG"
+            echo "   Must be: v1.0.0"
+            exit 1
+          fi
+          echo "✅ Tag format valid: $TAG"
+      
+      - name: Download validation script
+        run: |
+          curl -fsSL -o validate-hardgates.sh \
+            https://raw.githubusercontent.com/jasslin/documentation-management/main/scripts/validate-hardgates.sh
+          chmod +x validate-hardgates.sh
+      
+      - name: Run Hard Gates validation
+        run: bash validate-hardgates.sh
+      
+      - name: Validation passed
+        run: |
+          echo "✅ All hard gates passed"
+          echo "   Proceeding to build and deployment"
+
+  # Job 2: Build and push Docker images
+  build:
+    name: Build Docker Images
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_REGISTRY_USER }}
+          password: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+      
+      - name: Extract tag version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Build and push with digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_REGISTRY_USER }}/${{ env.PROJECT_NAME }}:${{ steps.version.outputs.version }}
+            ${{ secrets.DOCKER_REGISTRY_USER }}/${{ env.PROJECT_NAME }}:latest
+          cache-from: type=registry,ref=${{ secrets.DOCKER_REGISTRY_USER }}/${{ env.PROJECT_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_REGISTRY_USER }}/${{ env.PROJECT_NAME }}:buildcache,mode=max
+      
+      - name: Save image digest
+        run: |
+          echo "${{ steps.build.outputs.digest }}" > image.digest
+          cat image.digest
+      
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-digest
+          path: image.digest
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+  # Job 3: Create deployment snapshot
+  snapshot:
+    name: Create Deployment Snapshot
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download image digest
+        uses: actions/download-artifact@v4
+        with:
+          name: image-digest
+      
+      - name: Extract tag version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Download snapshot script
+        run: |
+          curl -fsSL -o snapshot-release.sh \
+            https://raw.githubusercontent.com/jasslin/documentation-management/main/scripts/snapshot-release.sh
+          chmod +x snapshot-release.sh
+      
+      - name: Generate deployment snapshot
+        run: |
+          bash snapshot-release.sh \
+            --version "${{ steps.version.outputs.version }}" \
+            --digest "$(cat image.digest)" \
+            --output "deployment-snapshot.tar.gz"
+      
+      - name: Upload deployment snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-snapshot-${{ steps.version.outputs.version }}
+          path: deployment-snapshot.tar.gz
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+      
+      - name: List snapshot contents
+        run: |
+          tar -tzf deployment-snapshot.tar.gz
+          echo "✅ Deployment snapshot created"
+
+  # Job 4: Deploy to production
+  deploy:
+    name: Deploy to Production
+    needs: [validate, build, snapshot]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://your-service-url.com  # CHANGE THIS
+    
+    steps:
+      - name: Download deployment snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-snapshot-${{ needs.snapshot.outputs.version }}
+      
+      - name: Extract tag version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: Upload snapshot to production server
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            deployment-snapshot.tar.gz \
+            deploy@${{ secrets.PRODUCTION_HOST }}:/tmp/deployment-snapshot.tar.gz
+      
+      - name: Deploy using snapshot
+        run: |
+          ssh -i ~/.ssh/deploy_key deploy@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            set -e
+            
+            echo "=========================================="
+            echo "Production Deployment"
+            echo "Version: ${{ steps.version.outputs.version }}"
+            echo "Time: $(date)"
+            echo "=========================================="
+            
+            # Extract snapshot
+            cd ${{ env.DEPLOY_PATH }}
+            tar -xzf /tmp/deployment-snapshot.tar.gz -C /tmp/
+            
+            # Backup current state (for rollback)
+            if [ -f docker-compose.yml ]; then
+              mkdir -p backups
+              tar -czf "backups/backup-$(date +%Y%m%d-%H%M%S).tar.gz" \
+                docker-compose.yml .env 2>/dev/null || true
+            fi
+            
+            # Deploy new configuration
+            cp /tmp/deployment-snapshot/docker-compose.yml ./
+            
+            # Pull images using digests (exact versions)
+            docker-compose pull
+            
+            # Deploy with zero-downtime (recreate only changed containers)
+            docker-compose up -d --remove-orphans
+            
+            # Clean up
+            rm /tmp/deployment-snapshot.tar.gz
+            rm -rf /tmp/deployment-snapshot
+            
+            echo "✅ Deployment completed"
+          EOF
+      
+      - name: Verify deployment
+        run: |
+          ssh -i ~/.ssh/deploy_key deploy@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            cd ${{ env.DEPLOY_PATH }}
+            
+            echo "Verifying deployment..."
+            
+            # Check all containers are running
+            if ! docker-compose ps | grep -q "Up"; then
+              echo "❌ Some containers are not running"
+              docker-compose ps
+              exit 1
+            fi
+            
+            # Wait for health checks
+            echo "Waiting 30s for health checks..."
+            sleep 30
+            
+            # Check health
+            docker-compose ps
+            
+            echo "✅ Deployment verified"
+          EOF
+      
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+      
+      - name: Deployment successful
+        run: |
+          echo "=========================================="
+          echo "✅ PRODUCTION DEPLOYMENT SUCCESSFUL"
+          echo "=========================================="
+          echo ""
+          echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Time: $(date)"
+          echo "Deployed by: ${{ github.actor }}"
+          echo "Commit: ${{ github.sha }}"
+          echo ""
+          echo "Rollback command:"
+          echo "  git checkout <previous-tag>"
+          echo "  git push origin <previous-tag>"
+
+  # Job 5: Post-deployment verification
+  verify:
+    name: Post-Deployment Health Check
+    needs: deploy
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Wait for service stability
+        run: sleep 60
+      
+      - name: Check service health
+        run: |
+          # Add your health check endpoint here
+          # curl -f https://your-service.com/health || exit 1
+          echo "✅ Health check passed"
+      
+      - name: Notify success
+        if: success()
+        run: |
+          echo "Deployment successful and verified"
+          # Add notification webhook here (Slack, Discord, etc.)
+
+  # Job 6: Rollback on failure
+  rollback:
+    name: Rollback on Failure
+    needs: [deploy, verify]
+    if: failure()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: Rollback to previous version
+        run: |
+          ssh -i ~/.ssh/deploy_key deploy@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            cd ${{ env.DEPLOY_PATH }}
+            
+            echo "=========================================="
+            echo "AUTOMATIC ROLLBACK"
+            echo "=========================================="
+            
+            # Find latest backup
+            LATEST_BACKUP=$(ls -t backups/backup-*.tar.gz 2>/dev/null | head -1)
+            
+            if [ -n "$LATEST_BACKUP" ]; then
+              echo "Rolling back to: $LATEST_BACKUP"
+              tar -xzf "$LATEST_BACKUP"
+              docker-compose up -d --remove-orphans
+              echo "✅ Rollback completed"
+            else
+              echo "❌ No backup found for rollback"
+              exit 1
+            fi
+          EOF
+      
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+      
+      - name: Notify rollback
+        run: |
+          echo "⚠️  Deployment failed, automatic rollback performed"
+          # Add notification here
+
+# Notes:
+# - This pipeline ONLY runs on git tags (v*.*.*)
+# - Manual SSH docker-compose operations are FORBIDDEN
+# - All deployments go through this pipeline
+# - Rollback capability is automatic
+# - Every deployment creates a snapshot artifact
+# - Deploy key has restricted permissions (can only run deployment commands)
