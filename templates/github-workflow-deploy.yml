@@ -1,9 +1,10 @@
-# Production Deployment Pipeline
-# 生產環境部署管道
+# Production Deployment Pipeline (GitHub Flow)
+# 生產環境部署管道（GitHub Flow）
 #
 # Purpose: Automate production releases, prevent manual SSH operations
 # 目的：自動化生產釋出，防止手動 SSH 操作
 #
+# GitHub Flow: main branch → tag → automatic deployment
 # Trigger: Only on git tags (v1.0.0 format)
 # 觸發：僅在 git tag（v1.0.0 格式）
 #

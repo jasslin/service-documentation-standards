@@ -27,35 +27,56 @@ These requirements exist because of the **2-week Flemabus outage incident** wher
 
 ## Release Entry Point (釋出入口)
 
+### GitHub Flow Model
+
+**This project uses GitHub Flow (not Git Flow):**
+- Single long-lived branch: `main`
+- Feature branches from `main`
+- PR to merge back to `main`
+- Deploy from `main` using tags
+
 ### All Production Deployments MUST:
 
-1. **Submit Pull Request** to the service's git repository
+1. **Submit Pull Request** to merge into `main`
 2. **Pass Hard Gate Validation** (automated checks)
 3. **Obtain Approval** from authorized engineer
-4. **Deploy via git tag** (never manual docker-compose commands)
+4. **Merge to `main`**
+5. **Tag and deploy** from `main` (never manual docker-compose commands)
 
-### Workflow:
+### Workflow (GitHub Flow):
 
 ```bash
-# 1. Create branch and make changes
-git checkout -b release/v1.2.3
+# 1. Create feature branch from main
+git checkout main
+git pull
+git checkout -b feature/update-api
 
-# 2. Run validation before PR
-bash scripts/validate-hardgates.sh
+# 2. Make changes and commit
+# ... edit files ...
+git commit -m "Update API endpoint"
+git push origin feature/update-api
 
-# 3. Submit PR
+# 3. Create PR to main
 # (CI/CD runs validation automatically)
 
-# 4. After approval, tag and deploy
+# 4. After approval, merge to main
+# (PR merged via GitHub UI)
+
+# 5. Tag the merge commit on main
+git checkout main
+git pull
 git tag -a v1.2.3 -m "Production release"
 git push origin v1.2.3
 
-# 5. On production server
-cd /opt/[service-name]
-git fetch --tags
-git checkout v1.2.3
-docker-compose up -d
+# 6. GitHub Actions automatically deploys from tag
+# (No manual operations needed)
 ```
+
+**Key Points:**
+- Feature branches are short-lived (delete after merge)
+- Always branch from and merge to `main`
+- Tag after merge to `main`, not on feature branch
+- Deployment triggered by tags, not branches
 
 ---
 

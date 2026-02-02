@@ -18,21 +18,15 @@
 
 name: Validate Hard Gates
 
-# Trigger on pull requests and pushes to protected branches
-# 在拉取請求和推送到受保護分支時觸發
+# Trigger on pull requests and pushes to main branch (GitHub Flow)
+# 在拉取請求和推送到 main 分支時觸發（GitHub Flow）
 on:
   pull_request:
     branches:
       - main
-      - master
-      - release/*
-      - production
   push:
     branches:
       - main
-      - master
-      - release/*
-      - production
 
 # Prevent concurrent runs for the same PR
 # 防止同一 PR 的並發運行

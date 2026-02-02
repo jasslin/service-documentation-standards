@@ -116,25 +116,36 @@ Best practices that improve quality but don't block deployment:
 
 ## For Engineers Deploying to Production
 
-### Before Every Release:
+### GitHub Flow Deployment Process:
 
 ```bash
-# 1. Run validation
+# 1. Create feature branch from main
+git checkout main
+git pull
+git checkout -b feature/your-change
+
+# 2. Make changes and validate
 bash scripts/validate-hardgates.sh
 
-# 2. If all pass → Submit PR
-# 3. After approval → Tag and deploy
+# 3. Push and create PR to main
+git push origin feature/your-change
+# Create PR via GitHub UI
+
+# 4. After PR approved and merged to main
+git checkout main
+git pull
+
+# 5. Tag the merge commit
 git tag -a v1.2.3 -m "Production release"
 git push origin v1.2.3
 
-# 4. On production server
-cd /opt/[service-name]
-git fetch --tags
-git checkout v1.2.3
-docker-compose up -d
+# 6. GitHub Actions automatically deploys
+# (No manual server operations needed)
 ```
 
 **Full procedures**: [RELEASE_POLICY.md](RELEASE_POLICY.md)
+
+**Key**: We use **GitHub Flow** (not Git Flow) - single `main` branch, feature branches, PR to merge.
 
 ---
 

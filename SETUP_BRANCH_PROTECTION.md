@@ -49,7 +49,8 @@
 1. Click **Add branch protection rule**
 2. In "Branch name pattern", enter: `main`
    - (Or `master` if your default branch is master)
-   - For release branches: `release/*`
+   - **GitHub Flow**: Only protect `main` branch
+   - Feature branches are short-lived and deleted after merge
 
 ### Step 3: Configure Protection Rules
 
